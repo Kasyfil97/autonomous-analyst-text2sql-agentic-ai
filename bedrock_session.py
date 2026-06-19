@@ -74,7 +74,7 @@ class BedrockSession:
             self.setup()
 
     def invoke(self, messages, tools=None, max_tokens=2048, temperature=0.0,
-               *, allow_mantle=False):
+               *, tool_choice=None, allow_mantle=False):
         """Invoke the model with an OpenAI-style body and return the raw assistant
         ``message`` dict (``choices[0].message``), including ``tool_calls`` when present.
 
@@ -94,6 +94,8 @@ class BedrockSession:
         }
         if tools:
             body_dict["tools"] = tools
+        if tool_choice is not None:
+            body_dict["tool_choice"] = tool_choice
         body = json.dumps(body_dict)
 
         try:
