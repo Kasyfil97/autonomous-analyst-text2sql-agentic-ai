@@ -64,7 +64,11 @@ class BedrockSession:
         self._created_at = time.time()
 
         identity = self.session.client("sts").get_caller_identity()
-        print(f"✅ Session ready — Identity: {identity['Arn']}")
+        # R13 log hygiene: don't print the full identity ARN at default verbosity.
+        if os.getenv("T2S_DEBUG"):
+            print(f"✅ Session ready — Identity: {identity['Arn']}")
+        else:
+            print("✅ Session ready")
 
     def refresh_if_needed(self):
         """Re-run setup() if credentials are close to expiry."""
