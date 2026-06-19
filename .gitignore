@@ -1,0 +1,20 @@
+# Secrets / env
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Caches / artifacts
+.key_filters_cache.json
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
