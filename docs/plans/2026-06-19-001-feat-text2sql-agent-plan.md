@@ -261,6 +261,15 @@ flowchart TB
 
 **Verification:** Documented PASS (gpt-oss fires tools + forced tool via the provider) or recorded fallback decisions, **plus** the captured wire shapes. Do not start U4–U7 until this resolves.
 
+> **RESULT (live, 2026-06-19): PASS on all three.** gpt-oss-120b via `invoke_model`
+> returns OpenAI `tool_calls` in `choices[0].message` (`{function:{name,arguments:<json
+> string>}, id, type:"function"}`, plus a null `refusal` field); the real reasoning
+> delimiter is `<reasoning>…</reasoning>` (existing `_strip_reasoning` matches); a Strands
+> Agent fired a `@tool`; and forced structured output (`tool_choice=required`) returned a
+> validated object. No fallback needed. **Note for U6:** `Agent.structured_output()` is
+> deprecated in favor of passing `structured_output_model` into the agent call — both work;
+> use the non-deprecated path in U6.
+
 - [ ] **Unit 3: Hybrid retrieval helper (dense + sparse + RRF)**
 
 **Goal:** One reusable function to retrieve ranked rows from any KB table using the `RETRIEVAL.md` hybrid recipe (KD4).
