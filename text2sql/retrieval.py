@@ -66,15 +66,22 @@ def _dense_literal(vec) -> str:
     return "[" + ",".join(f"{v:.8f}" for v in vec) + "]"
 
 
-def hybrid_search(kb: str, question: str, *, limit: int = 10, pool: int = 50,
-                  where: str | None = None, conn=None):
+# Only these KB tables may be searched — guards the f-string table interpolation.
+ALLOWED_KBS = {"era_knowledge", "schema_tables", "schema_columns"}
+
+
+def hybrid_search(kb: str, question: str, *, limit: int = 10, pool: int = 50, conn=None):
     """Hybrid-retrieve from ``kb`` and return ranked rows.
 
     Returns a list of dicts ``{id, score (RRF), dense_cosine, bm25}`` ordered by RRF
     score desc. ``dense_cosine``/``bm25`` are None when a row was only found by the
-    other modality. ``where`` is an optional SQL predicate for a GIN metadata prefilter
-    (e.g. ``"'PINJAMAN' = ANY(domain_tags)"``).
+    other modality.
+
+    ``kb`` must be one of ``ALLOWED_KBS`` (it is f-string-interpolated into the query);
+    no free-text predicate is accepted, so no caller can inject SQL here.
     """
+    if kb not in ALLOWED_KBS:
+        raise ValueError(f"unknown KB: {kb!r}")
     own_conn = conn is None
     if own_conn:
         conn = psycopg2.connect(**pg_config(readonly=True))
@@ -82,18 +89,17 @@ def hybrid_search(kb: str, question: str, *, limit: int = 10, pool: int = 50,
         vocab, idf, dim = _load_vocab(conn, kb)
         qd = _dense_literal(embed_one(question))
         qs = encode_query_sparse(question, vocab, idf, dim)
-        filter_sql = f"WHERE {where}" if where else ""
 
         sql = f"""
         WITH d AS (
             SELECT id, row_number() OVER (ORDER BY dense <=> %(qd)s::vector) AS rk,
                    1 - (dense <=> %(qd)s::vector) AS cosine
-            FROM {kb} {filter_sql}
+            FROM {kb}
             ORDER BY dense <=> %(qd)s::vector LIMIT %(pool)s),
         s AS (
             SELECT id, row_number() OVER (ORDER BY sparse <#> %(qs)s::sparsevec) AS rk,
                    -(sparse <#> %(qs)s::sparsevec) AS bm25
-            FROM {kb} {filter_sql}
+            FROM {kb}
             ORDER BY sparse <#> %(qs)s::sparsevec LIMIT %(pool)s)
         SELECT COALESCE(d.id, s.id) AS id,
                COALESCE(1.0/(60+d.rk), 0) + COALESCE(1.0/(60+s.rk), 0) AS score,

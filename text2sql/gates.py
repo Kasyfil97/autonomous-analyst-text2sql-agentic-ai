@@ -29,16 +29,20 @@ UNVERIFIED_MARKER = "-- UNVERIFIED DRAFT — review before running; the tool doe
 # Tables the agent must never reference (mirrors the read-only role's exclusions).
 TABLE_DENYLIST = {"era_tickets", "era_tickets_vec", "era_tickets_descpseudo"}
 
-# Side-effecting / IO functions — always rejected (fast-path denylist).
+# Side-effecting / IO / code-exec functions — always rejected (fast-path denylist).
+# Includes Spark JVM-exec (reflect/java_method) and config readers flagged in review.
 DANGEROUS_FUNCS = {
     "pg_read_file", "pg_sleep", "dblink", "lo_import", "lo_export", "xp_cmdshell",
     "openrowset", "opendatasource", "pg_ls_dir", "copy", "load_file",
+    "reflect", "java_method", "current_setting", "set_config", "system", "sys_exec",
 }
 
 # Restricted identifier name fragments (PII/PCI) — v1 heuristic until R13 classification.
 RESTRICTED_FRAGMENTS = {
     "nik", "ktp", "npwp", "cvv", "card", "pan", "password", "passwd", "pin",
     "ssn", "tgl_lahir", "tanggal_lahir", "nama_ibu", "mother_name", "dob",
+    "email", "phone", "telp", "mobile", "alamat", "address", "tax_id",
+    "rekening", "no_rek", "norek", "account_no", "acct_no",
 }
 
 # Forbidden statement node types (build dynamically — names vary across sqlglot versions).
@@ -75,12 +79,25 @@ def _sqlglot_dialect(engine: str | None) -> str | None:
 # --------------------------------------------------------------------------
 
 def validate_sql(sql: str, dialect: str | None = None, *, strict_functions: bool = False):
-    """Return (safe: bool, detail, tables: set, columns: set). Fail-closed."""
+    """Return (safe: bool, detail, tables: set, columns: set). Fail-closed.
+
+    Parses under the resolved dialect, falling back to ``spark`` — real catalog tables
+    are digit-leading (e.g. ``1000_TRX_TELLER``) and only the Spark dialect parses such
+    unquoted identifiers; without this, valid SQLServer/unknown-dialect queries would be
+    wrongly rejected as unparseable. Structural DDL/DML rejection is dialect-independent.
+    """
     glot = _sqlglot_dialect(dialect)
+
+    def _parse(read):
+        return [s for s in sqlglot.parse(sql, read=read) if s is not None]
+
     try:
-        statements = [s for s in sqlglot.parse(sql, read=glot) if s is not None]
-    except Exception as exc:  # noqa: BLE001 — any parse failure => unsafe
-        return False, f"unparseable SQL ({type(exc).__name__})", set(), set()
+        statements = _parse(glot or "spark")
+    except Exception:  # noqa: BLE001
+        try:
+            statements = _parse("spark")
+        except Exception as exc:  # noqa: BLE001 — any parse failure => unsafe
+            return False, f"unparseable SQL ({type(exc).__name__})", set(), set()
 
     if len(statements) != 1:
         return False, f"expected exactly one statement, got {len(statements)}", set(), set()
@@ -113,8 +130,13 @@ def validate_sql(sql: str, dialect: str | None = None, *, strict_functions: bool
 # --------------------------------------------------------------------------
 
 def check_grounding(referenced_tables, known_tables, *, warn: bool = False):
-    """Return (ok, missing). With warn=True (sample), report misses but don't block."""
-    missing = {t for t in referenced_tables if t not in known_tables}
+    """Return (ok, missing). With warn=True (sample), report misses but don't block.
+
+    Comparison is case-insensitive — sqlglot preserves the case the model wrote, while
+    the catalog stores its own (often upper) case.
+    """
+    known_lower = {t.lower() for t in known_tables}
+    missing = {t for t in referenced_tables if t.lower() not in known_lower}
     if missing and not warn:
         return False, missing
     return True, missing

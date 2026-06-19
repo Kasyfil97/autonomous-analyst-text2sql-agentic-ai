@@ -92,6 +92,8 @@ class Text2SqlBedrockModel(Model):
         async for event in streaming.process_stream(response):
             yield event
 
+        if event is None or "stop" not in event:
+            raise ValueError("empty/incomplete stream from model")
         stop_reason, message, _, _ = event["stop"]
         if stop_reason != "tool_use":
             raise ValueError(f'Model returned stop_reason: {stop_reason} instead of "tool_use".')

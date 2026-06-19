@@ -71,6 +71,16 @@ def test_apply_gates_passes_grounded_retrieved_query(conn):
     assert "trx_teller" in out.tables_used
 
 
+def test_apply_gates_case_insensitive_retrieved_match(conn):
+    # model emits lowercase; catalog/retrieved store uppercase -> must still pass
+    ctx = FakeCtx(retrieved={"1000_TRX_TELLER"})
+    A._known_tables_cache = {"1000_TRX_TELLER"}
+    r = Text2SQLResult(sql="SELECT branch FROM 1000_trx_teller", dialect="SparkSQL")
+    out = apply_gates(r, ctx, conn, ground_warn=True)
+    A._known_tables_cache = None
+    assert not out.declined, out.missing
+
+
 def test_apply_gates_declines_table_never_retrieved(conn):
     # model claims a table it never looked up -> accumulator authority declines
     ctx = FakeCtx(retrieved=set())  # nothing retrieved

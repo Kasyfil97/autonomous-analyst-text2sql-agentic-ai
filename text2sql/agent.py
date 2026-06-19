@@ -125,11 +125,16 @@ def parse_result(raw_text: str) -> Text2SQLResult:
 
 
 def precedent_dialect(ctx: RetrievalContext, conn) -> str | None:
-    """Dialect from the top cited ERA precedent's query_engine."""
+    """Dialect from the highest-scoring cited ERA precedent's query_engine.
+
+    Picks the ERA call with the max top_cosine across the loop (not call order), so a
+    refining second search can't drag the dialect off the best precedent.
+    """
     era_calls = [c for c in ctx.calls if c["kb"] == "era_knowledge" and c["ids"]]
     if not era_calls:
         return None
-    top_id = era_calls[0]["ids"][0]
+    best = max(era_calls, key=lambda c: c.get("top_cosine", 0.0))
+    top_id = best["ids"][0]
     with conn.cursor() as cur:
         cur.execute("SELECT query_engine FROM era_knowledge WHERE id = %s", (top_id,))
         row = cur.fetchone()
@@ -156,9 +161,11 @@ def apply_gates(result: Text2SQLResult, ctx: RetrievalContext, conn, *,
         return Text2SQLResult.decline(f"{decision.reason}: {decision.detail}")
 
     # Accumulator authority: every referenced table must have actually been retrieved
-    # (catches a model that claims a table it never looked up).
+    # (catches a model that claims a table it never looked up). Case-insensitive —
+    # sqlglot keeps the model's case, retrieved_tables keep the catalog's.
+    retrieved_lower = {t.lower() for t in ctx.retrieved_tables}
     unretrieved = {t for t in decision.referenced_tables
-                   if t not in ctx.retrieved_tables}
+                   if t.lower() not in retrieved_lower}
     if unretrieved:
         return Text2SQLResult.decline(
             f"grounding: referenced table(s) never retrieved: {sorted(unretrieved)}")

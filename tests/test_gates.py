@@ -34,6 +34,26 @@ def test_unparseable_is_fail_closed():
     assert not safe
 
 
+@pytest.mark.parametrize("dialect", [None, "SQLServer", "tsql", "SparkSQL"])
+def test_digit_leading_table_parses_under_any_dialect(dialect):
+    # real catalog tables start with digits (1000_TRX_TELLER); must not be rejected
+    safe, detail, tables, _ = G.validate_sql(
+        "SELECT branch FROM 1000_TRX_TELLER", dialect)
+    assert safe, f"digit-leading table wrongly rejected for {dialect}: {detail}"
+    assert "1000_TRX_TELLER" in tables
+
+
+def test_destructive_still_blocked_under_spark_fallback():
+    # the spark fallback must not weaken DDL/DML rejection
+    safe, _, _, _ = G.validate_sql("DROP TABLE 1000_TRX_TELLER", "tsql")
+    assert not safe
+
+
+def test_grounding_is_case_insensitive():
+    ok, missing = G.check_grounding({"1000_trx_teller"}, {"1000_TRX_TELLER"}, warn=False)
+    assert ok and not missing
+
+
 def test_strict_functions_rejects_unknown():
     # an unknown UDF parses to Anonymous; strict mode declines
     safe, _, _, _ = G.validate_sql("SELECT my_weird_udf(x) FROM t", "spark",

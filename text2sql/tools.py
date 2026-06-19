@@ -29,15 +29,21 @@ _EMAIL = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
 # >=10 contiguous digits: catches PANs / long account numbers but leaves coded
 # values (1-3 digits), periods (YYYYMM=6), and dates (YYYYMMDD=8) intact.
 _LONG_DIGITS = re.compile(r"(?<!\d)\d{10,}(?!\d)")
+# NIK / card numbers written with separators or spaces (>=12 grouped digits).
+_GROUPED_PII = re.compile(r"(?<![\d-])(?:\d[ .-]?){12,}\d(?![\d-])")
+# Indonesian phone numbers (e.g. 0812-3456-7890, +62 812 3456 7890).
+_PHONE = re.compile(r"(?<!\d)(?:\+62|0)[\s.-]?8\d(?:[\s.-]?\d){7,10}(?!\d)")
 # Card numbers only, for SQL bodies (very conservative to preserve literals).
 _PAN = re.compile(r"(?<!\d)\d{13,19}(?!\d)")
 
 
 def redact_note(text: str) -> str:
-    """Redact free-text analyst notes (emails + long digit runs)."""
+    """Redact free-text (emails, phones, grouped/long PII digit runs)."""
     if not text:
         return text
     text = _EMAIL.sub("[EMAIL]", text)
+    text = _PHONE.sub("[PHONE]", text)
+    text = _GROUPED_PII.sub("[REDACTED]", text)
     return _LONG_DIGITS.sub("[REDACTED]", text)
 
 
@@ -116,12 +122,12 @@ def _render_table_ddl(conn, table_name: str, description: str | None = None) -> 
     columns = _fetch_table_columns(conn, table_name)
     lines = []
     if description:
-        lines.append(f"-- {table_name}: {description}")
+        lines.append(f"-- {table_name}: {redact_note(description)}")
     lines.append(f"CREATE TABLE {table_name} (")
     if columns:
         for c in columns:
-            title = c.get("business_title") or ""
-            desc = (c.get("description") or "").replace("\n", " ").strip()
+            title = redact_note(c.get("business_title") or "")
+            desc = redact_note((c.get("description") or "").replace("\n", " ").strip())
             comment = f"  -- {title}: {desc}".rstrip(": ").rstrip()
             lines.append(f"    {c['field_name']} {c.get('data_type') or 'string'},{comment}")
     else:
