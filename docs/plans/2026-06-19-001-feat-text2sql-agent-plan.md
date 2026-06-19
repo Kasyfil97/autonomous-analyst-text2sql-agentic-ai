@@ -1,7 +1,7 @@
 ---
 title: "feat: Text-to-SQL Agent (Strands + gpt-oss-120b on Bedrock)"
 type: feat
-status: active
+status: completed
 date: 2026-06-19
 deepened: 2026-06-19
 origin: docs/brainstorms/2026-06-19-text2sql-agent-requirements.md
