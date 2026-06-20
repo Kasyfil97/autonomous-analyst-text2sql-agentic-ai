@@ -11,10 +11,14 @@ Uses the least-privilege read-only Postgres role (``pg_config(readonly=True)``).
 from __future__ import annotations
 
 import re
+import time
 
 import psycopg2
 
-from embedding_service import embed_one, pg_config
+from text2sql.embedding_service import embed_one, pg_config
+from text2sql.audit_log import get_logger
+
+_log = get_logger("retrieval")
 
 # Indonesian + English stopwords (verbatim from RETRIEVAL.md so query tokenization
 # matches the indexed side).
@@ -82,12 +86,33 @@ def hybrid_search(kb: str, question: str, *, limit: int = 10, pool: int = 50, co
     """
     if kb not in ALLOWED_KBS:
         raise ValueError(f"unknown KB: {kb!r}")
+
+    _log.info("START  | kb=%-20s limit=%d  question=%r", kb, limit, question[:100])
+    t0 = time.perf_counter()
+
     own_conn = conn is None
     if own_conn:
         conn = psycopg2.connect(**pg_config(readonly=True))
     try:
         vocab, idf, dim = _load_vocab(conn, kb)
+
+        tokens = tokenize(question)
+        in_vocab = [t for t in set(tokens) if t in vocab]
+        _log.debug(
+            "sparse  | tokens=%s  in_vocab=%d/%d  dim=%d",
+            tokens, len(in_vocab), len(set(tokens)), dim,
+        )
+        if not in_vocab:
+            _log.warning(
+                "sparse  | kb=%s — all query tokens outside BM25 vocab; "
+                "sparse lane will contribute nothing to RRF ranking",
+                kb,
+            )
+
+        t_embed = time.perf_counter()
         qd = _dense_literal(embed_one(question))
+        _log.debug("embed   | elapsed=%.3fs", time.perf_counter() - t_embed)
+
         qs = encode_query_sparse(question, vocab, idf, dim)
 
         sql = f"""
@@ -112,6 +137,26 @@ def hybrid_search(kb: str, question: str, *, limit: int = 10, pool: int = 50, co
             cur.execute(sql, {"qd": qd, "qs": qs, "pool": pool, "limit": limit})
             cols = [c.name for c in cur.description]
             rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+
+        elapsed = time.perf_counter() - t0
+        if rows:
+            top = rows[0]
+            _log.info(
+                "DONE   | kb=%-20s rows=%d  top_cosine=%.3f  top_bm25=%.4f  "
+                "top_rrf=%.4f  elapsed=%.3fs",
+                kb, len(rows),
+                top.get("dense_cosine") or 0.0,
+                top.get("bm25") or 0.0,
+                top.get("score") or 0.0,
+                elapsed,
+            )
+        else:
+            _log.warning(
+                "DONE   | kb=%-20s rows=0 (no results)  elapsed=%.3fs  "
+                "→ top_cosine will be 0.0 for this KB",
+                kb, elapsed,
+            )
+
         return rows
     finally:
         if own_conn:

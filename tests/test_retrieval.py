@@ -6,7 +6,7 @@ Asserts the rankings RETRIEVAL.md verified, plus encoding edge cases.
 import psycopg2
 import pytest
 
-from embedding_service import pg_config
+from text2sql.embedding_service import pg_config
 from text2sql import retrieval as R
 
 

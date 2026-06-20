@@ -10,7 +10,7 @@ import time
 import pytest
 
 import bedrock_session as bs
-from embedding_service import pg_config
+from text2sql.embedding_service import pg_config
 
 
 # --------------------------------------------------------------------------

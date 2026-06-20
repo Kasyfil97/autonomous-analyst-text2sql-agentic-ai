@@ -11,6 +11,9 @@ from __future__ import annotations
 import sys
 
 from text2sql.agent import Text2SQLResult, generate_sql, get_session
+from text2sql.audit_log import get_logger
+
+_log = get_logger("cli")
 
 
 def format_result(r: Text2SQLResult) -> str:
@@ -34,17 +37,25 @@ def run_repl(generate=generate_sql, in_fn=input, out=print) -> None:
             question = in_fn("\nYou: ").strip()
         except (EOFError, KeyboardInterrupt):
             out("\nBye!")
+            _log.info("session END — user interrupted")
             break
         if not question:
             continue
         if question.lower() in ("exit", "quit"):
             out("Bye!")
+            _log.info("session END — user typed exit/quit")
             break
+        _log.info("question RECEIVED | %r", question[:120])
         try:
             result = generate(question)
         except Exception as exc:  # noqa: BLE001 — keep the loop alive
+            _log.error("generate EXCEPTION | %s: %s", type(exc).__name__, exc)
             out(f"\n❌ {type(exc).__name__}: {exc}\n")
             continue
+        if result.declined:
+            _log.warning("question DECLINED | reason=%r", result.missing)
+        else:
+            _log.info("question ANSWERED | dialect=%r  tables=%s", result.dialect, result.tables_used)
         out(format_result(result))
 
 
@@ -53,7 +64,9 @@ def main() -> None:
     print("💬 Text-to-SQL Agent (draft SQL only — no execution)")
     print("   Grounded in ERA precedents + schema KB. 'exit' to quit.")
     print("=" * 60)
+    _log.info("session START — authenticating (OIDC)")
     session = get_session()  # authenticate once up front
+    _log.info("session READY — OIDC auth complete")
     run_repl(generate=lambda q: generate_sql(q, session=session))
 
 

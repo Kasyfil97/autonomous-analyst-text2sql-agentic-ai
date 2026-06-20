@@ -94,5 +94,3 @@ def embed(texts, batch_size=64, max_retries=4, timeout=60):
 def embed_one(text):
     """Embed a single string -> one vector."""
     return embed([text])[0]
-
-

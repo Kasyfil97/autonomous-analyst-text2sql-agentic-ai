@@ -20,6 +20,9 @@ from typing import Any, AsyncIterable
 from strands.models import Model
 
 import bedrock_session as _bs
+from text2sql.audit_log import get_logger
+
+_log = get_logger("bedrock_model")
 
 
 class Text2SqlBedrockModel(Model):
@@ -55,6 +58,12 @@ class Text2SqlBedrockModel(Model):
         openai_messages = to_openai_messages(messages, system_prompt)
         openai_tools = to_openai_tools(tool_specs)
         oai_tool_choice = to_openai_tool_choice(tool_choice, openai_tools)
+
+        available_tools = [t["function"]["name"] for t in (openai_tools or [])]
+        _log.info(
+            "invoke | available_tools=%s  tool_choice=%r  history_turns=%d",
+            available_tools, oai_tool_choice, len(openai_messages),
+        )
 
         # Blocking invoke runs in a worker thread to satisfy the async signature.
         message = await asyncio.to_thread(
@@ -121,12 +130,17 @@ def message_to_events(message: dict) -> list[dict]:
     tool_calls = message.get("tool_calls") or []
 
     if tool_calls:
-        for tc in tool_calls:
+        _log.info("llm_decision | stop_reason=tool_use  tool_calls=%d", len(tool_calls))
+        for i, tc in enumerate(tool_calls):
             fn = tc.get("function", {})
             tool_use_id = tc.get("id") or f"tooluse_{uuid.uuid4().hex[:16]}"
             args = fn.get("arguments")
             if not isinstance(args, str):
                 args = json.dumps(args or {})
+            _log.info(
+                "llm_tool_call | #%d  name=%r  args=%s",
+                i + 1, fn.get("name", ""), args,
+            )
             events.append({"contentBlockStart": {"start": {"toolUse": {
                 "toolUseId": tool_use_id, "name": fn.get("name", ""),
             }}}})
@@ -135,6 +149,10 @@ def message_to_events(message: dict) -> list[dict]:
         stop_reason = "tool_use"
     else:
         text = _bs._strip_reasoning(message.get("content") or "")
+        _log.info(
+            "llm_decision | stop_reason=end_turn  response_len=%d chars",
+            len(text),
+        )
         events.append({"contentBlockDelta": {"delta": {"text": text}}})
         events.append({"contentBlockStop": {}})
         stop_reason = "end_turn"
