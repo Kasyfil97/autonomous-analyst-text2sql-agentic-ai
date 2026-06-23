@@ -93,9 +93,21 @@ def test_policy_allows_clean_identifiers():
 
 # -- coverage ----------------------------------------------------------------
 
-def test_coverage_declines_below_floor():
+def test_coverage_passes_schema_first_without_precedent():
+    # precedent is advisory: weak ERA + strong schema now PASSES (schema-first fallback)
     ok, detail = G.coverage_ok(0.10, 0.90)
-    assert not ok and "ERA precedent" in detail
+    assert ok and detail is None
+
+
+def test_coverage_declines_on_weak_schema():
+    # the schema floor is the authoritative bar — strong precedent can't rescue it
+    ok, detail = G.coverage_ok(0.80, 0.30)
+    assert not ok and "schema coverage" in detail
+
+
+def test_coverage_declines_when_both_weak():
+    ok, detail = G.coverage_ok(0.10, 0.30)
+    assert not ok and "schema coverage" in detail
 
 
 def test_coverage_passes_above_floors():
@@ -132,9 +144,20 @@ def test_decide_declines_ungrounded_even_if_model_claims_ok():
     assert not d.ok and d.reason == "grounding"
 
 
-def test_decide_declines_on_low_coverage_first():
-    d = G.decide("SELECT 1 FROM t", "spark",
-                 era_top_cosine=0.1, schema_top_cosine=0.7, known_tables={"t"})
+def test_decide_passes_schema_first_without_precedent():
+    # no confident precedent but strong schema -> coverage no longer blocks; query is
+    # grounded, so decide() approves (precedent is advisory)
+    d = G.decide("SELECT branch FROM trx_teller", "spark",
+                 era_top_cosine=0.1, schema_top_cosine=0.7,
+                 known_tables={"trx_teller"})
+    assert d.ok and "trx_teller" in d.referenced_tables
+
+
+def test_decide_declines_on_weak_schema_coverage():
+    # the schema floor still gates at the coverage layer, regardless of precedent
+    d = G.decide("SELECT branch FROM trx_teller", "spark",
+                 era_top_cosine=0.8, schema_top_cosine=0.2,
+                 known_tables={"trx_teller"})
     assert not d.ok and d.reason == "coverage"
 
 

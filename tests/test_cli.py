@@ -14,6 +14,21 @@ def test_format_success_shows_sql_and_sources():
     assert "ERA25-1685" in out and "does x" in out
 
 
+def test_format_shows_assumptions_when_present():
+    r = Text2SQLResult(sql="SELECT 1", dialect="SparkSQL",
+                       assumptions=["'active' = status NOT IN (2,4,8)",
+                                    "period = last calendar month"])
+    out = format_result(r)
+    assert "Assumptions" in out
+    assert "status NOT IN (2,4,8)" in out and "last calendar month" in out
+
+
+def test_format_omits_assumptions_when_empty():
+    r = Text2SQLResult(sql="SELECT 1", dialect="SparkSQL")
+    out = format_result(r)
+    assert "Assumptions" not in out
+
+
 def test_format_decline_shows_missing_no_sql():
     r = Text2SQLResult(declined=True, missing="no precedent for request")
     out = format_result(r)

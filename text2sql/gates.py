@@ -8,7 +8,7 @@ outputs, never the model's free-text claims. Layers:
                         functions / ``SELECT … INTO`` / multi-statement.
   * ``check_grounding`` — every referenced identifier must exist in the schema KB.
   * ``policy_ok``     — decline on restricted (PII/PCI) identifiers or the table denylist.
-  * ``coverage_ok``   — per-KB retrieval floors (ERA precedent + schema table).
+  * ``coverage_ok``   — schema-coverage floor only; precedent is advisory (not gated).
   * ``scan_output``   — ban destructive SQL anywhere in the answer/explanation text.
 
 On the 200-row sample, grounding runs in ``warn`` mode (expected to over-decline);
@@ -219,16 +219,21 @@ def policy_ok(referenced_tables, referenced_columns, *,
 
 def coverage_ok(era_top_cosine: float, schema_top_cosine: float, *,
                 era_floor: float = 0.45, schema_floor: float = 0.40):
-    """Per-KB coverage. Declines if the ERA precedent OR schema floor is not cleared."""
+    """Coverage gate. Declines only on the schema floor; precedent is advisory.
+
+    A weak or absent precedent (``era_top_cosine < era_floor``) no longer blocks: the
+    agent falls back to schema-first drafting. A confident precedent still informs the
+    draft and dialect upstream (see ``agent.precedent_dialect``); here it is logged for
+    the audit trail but never gates. Schema coverage remains the authoritative bar —
+    without it the retrieved table/column names are too uncertain to trust, so the
+    grounding/accumulator gates would have nothing reliable to ground against.
+    """
     if era_top_cosine < era_floor:
-        detail = f"no confident ERA precedent (cosine {era_top_cosine:.3f} < {era_floor})"
-        _log.warning(
-            "coverage_ok | FAIL — era_cosine=%.3f < floor=%.2f"
-            "  reason: no sufficiently similar precedent found; generating SQL without"
-            " a grounded example risks hallucination",
+        _log.info(
+            "coverage_ok | no confident ERA precedent (cosine %.3f < %.2f) — proceeding"
+            " schema-first (precedent is advisory; grounding/accumulator gates still apply)",
             era_top_cosine, era_floor,
         )
-        return False, detail
     if schema_top_cosine < schema_floor:
         detail = f"weak schema coverage (cosine {schema_top_cosine:.3f} < {schema_floor})"
         _log.warning(
@@ -238,8 +243,8 @@ def coverage_ok(era_top_cosine: float, schema_top_cosine: float, *,
         )
         return False, detail
     _log.info(
-        "coverage_ok | PASS — era_cosine=%.3f (≥%.2f)  schema_cosine=%.3f (≥%.2f)",
-        era_top_cosine, era_floor, schema_top_cosine, schema_floor,
+        "coverage_ok | PASS — era_cosine=%.3f  schema_cosine=%.3f (≥%.2f)",
+        era_top_cosine, schema_top_cosine, schema_floor,
     )
     return True, None
 

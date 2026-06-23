@@ -38,6 +38,7 @@ class Text2SQLResult(BaseModel):
     explanation: str | None = None
     tables_used: list[str] = Field(default_factory=list)
     columns_used: list[str] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list)
     precedent_ids: list[str] = Field(default_factory=list)
     dialect: str | None = None
     declined: bool = False
@@ -99,6 +100,7 @@ def parse_result(raw_text: str) -> Text2SQLResult:
         explanation=data.get("explanation"),
         tables_used=data.get("tables_used") or [],
         columns_used=data.get("columns_used") or [],
+        assumptions=data.get("assumptions") or [],
         precedent_ids=data.get("precedent_ids") or [],
         dialect=data.get("dialect"),
         declined=bool(data.get("declined")),
@@ -163,7 +165,11 @@ def apply_gates(result: Text2SQLResult, ctx: RetrievalContext, conn, *,
         _log.warning("apply_gates | DECLINE — model produced no SQL field")
         return Text2SQLResult.decline("model produced no SQL")
 
-    dialect = precedent_dialect(ctx, conn)
+    # Dialect: a confident precedent's query_engine is authoritative; when no precedent
+    # anchors it (schema-first path), fall back to the model's self-reported dialect and
+    # validate under that. validate_sql's DDL/DML rejection is dialect-independent, so a
+    # wrong self-report can only mislabel — never let an unsafe statement pass.
+    dialect = precedent_dialect(ctx, conn) or result.dialect
     decision = gates.decide(
         result.sql, dialect,
         era_top_cosine=ctx.era_top_cosine(),
@@ -200,7 +206,7 @@ def apply_gates(result: Text2SQLResult, ctx: RetrievalContext, conn, *,
         _log.warning("apply_gates | DECLINE — output scan: %s", detail)
         return Text2SQLResult.decline(f"unsafe output: {detail}")
 
-    result.dialect = dialect or result.dialect
+    result.dialect = dialect
     result.tables_used = sorted(decision.referenced_tables)
     result.sql = gates.UNVERIFIED_MARKER + "\n" + result.sql
     _log.info(
@@ -249,8 +255,10 @@ def generate_sql(question: str, *, session=None, conn=None) -> Text2SQLResult:
             )
         else:
             _log.info(
-                "generate_sql APPROVED | elapsed=%.3fs  dialect=%r  tables=%s  precedents=%s",
+                "generate_sql APPROVED | elapsed=%.3fs  dialect=%r  tables=%s  precedents=%s"
+                "  assumptions=%s",
                 elapsed, result.dialect, result.tables_used, result.precedent_ids,
+                result.assumptions,
             )
         return result
     finally:

@@ -74,7 +74,7 @@ The model `openai.gpt-oss-120b-1:0` does not support `ConverseStream` and return
 
 Gates are authoritative and fail-closed — any failure returns a decline rather than an unsafe query:
 
-1. **Coverage gate** — ERA top cosine ≥ 0.45, schema top cosine ≥ 0.40
+1. **Coverage gate** — schema top cosine ≥ 0.40 is the authoritative bar. Precedent is **advisory**: a weak/absent ERA precedent (< 0.45) no longer declines — the agent drafts schema-first and surfaces its interpretation choices in `assumptions`. Semantic correctness in the no-precedent path relies on the human reviewer (drafts are never executed); table-level grounding/accumulator still apply. Column-level grounding is a planned fast-follow.
 2. **SQL validation** — `sqlglot` AST parse; single `SELECT` only; no DDL/DML; no dangerous functions
 3. **Policy gate** — no `TABLE_DENYLIST` tables; no PII/PCI column name fragments
 4. **Grounding** — every table referenced in SQL must exist in schema KB AND have been retrieved during this session

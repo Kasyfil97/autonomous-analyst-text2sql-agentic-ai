@@ -26,6 +26,9 @@ def format_result(r: Text2SQLResult) -> str:
         lines.append(f"Tables:     {', '.join(r.tables_used)}")
     if r.explanation:
         lines.append(f"\n{r.explanation}")
+    if r.assumptions:
+        lines.append("\nAssumptions (verify before running):")
+        lines.extend(f"  • {a}" for a in r.assumptions)
     lines.append(f"\nSQL:\n{r.sql}\n")
     return "\n".join(lines)
 

@@ -34,6 +34,19 @@ def test_parse_declined_passthrough():
     assert r.declined and r.missing == "no precedent"
 
 
+def test_parse_reads_assumptions():
+    raw = ('{"sql":"SELECT 1","assumptions":["active = status IN (2,4,8)"],'
+           '"declined":false}')
+    r = parse_result(raw)
+    assert r.assumptions == ["active = status IN (2,4,8)"]
+
+
+def test_parse_assumptions_absent_defaults_empty():
+    # a draft with no interpretation choices omits the key -> empty list, no KeyError
+    r = parse_result('{"sql":"SELECT 1","declined":false}')
+    assert r.assumptions == []
+
+
 # -- apply_gates (gates authoritative) ---------------------------------------
 
 class FakeCtx:
@@ -81,6 +94,32 @@ def test_apply_gates_case_insensitive_retrieved_match(conn):
     assert not out.declined, out.missing
 
 
+def test_apply_gates_uses_model_dialect_when_no_precedent(conn):
+    # schema-first path: no ERA precedent -> dialect comes from the model's self-report,
+    # and coverage no longer blocks on the absent precedent
+    ctx = FakeCtx(era=0.1, schema=0.7, retrieved={"trx_teller"}, era_id=None)
+    A._known_tables_cache = {"trx_teller"}
+    r = Text2SQLResult(sql="SELECT branch FROM trx_teller", dialect="SparkSQL")
+    out = apply_gates(r, ctx, conn, ground_warn=True)
+    A._known_tables_cache = None
+    assert not out.declined, out.missing
+    assert out.dialect == "SparkSQL"
+    assert out.sql.startswith(A.gates.UNVERIFIED_MARKER)
+
+
+def test_apply_gates_allows_none_dialect_when_no_precedent_or_model(conn):
+    # no precedent AND model gave no dialect -> dialect stays None; validate_sql falls
+    # back to Spark parsing and the dialect-independent safety checks still hold
+    ctx = FakeCtx(era=0.1, schema=0.7, retrieved={"trx_teller"}, era_id=None)
+    A._known_tables_cache = {"trx_teller"}
+    r = Text2SQLResult(sql="SELECT branch FROM trx_teller", dialect=None)
+    out = apply_gates(r, ctx, conn, ground_warn=True)
+    A._known_tables_cache = None
+    assert not out.declined, out.missing
+    assert out.dialect is None
+    assert out.sql.startswith(A.gates.UNVERIFIED_MARKER)
+
+
 def test_apply_gates_declines_table_never_retrieved(conn):
     # model claims a table it never looked up -> accumulator authority declines
     ctx = FakeCtx(retrieved=set())  # nothing retrieved
@@ -91,8 +130,9 @@ def test_apply_gates_declines_table_never_retrieved(conn):
     assert out.declined and "never retrieved" in out.missing
 
 
-def test_apply_gates_declines_low_coverage(conn):
-    ctx = FakeCtx(era=0.1, schema=0.7, retrieved={"t"})
+def test_apply_gates_declines_weak_schema_coverage(conn):
+    # precedent is advisory now; the schema floor is what still gates at the coverage layer
+    ctx = FakeCtx(era=0.8, schema=0.2, retrieved={"t"})
     r = Text2SQLResult(sql="SELECT 1 FROM t", dialect="SparkSQL")
     out = apply_gates(r, ctx, conn, ground_warn=True)
     assert out.declined and "coverage" in out.missing
