@@ -291,6 +291,62 @@ def scan_output(text: str):
 
 
 # --------------------------------------------------------------------------
+# Search sub-agent gate (prose answers — warn-don't-block)
+# --------------------------------------------------------------------------
+
+# Catalog tables follow an UPPER/digit + underscore convention (e.g. 1000_TRX_TELLER).
+# Match those distinctive tokens in prose; lowercase column names are intentionally not
+# matched so a column mention isn't mistaken for an ungrounded table.
+_TABLE_LIKE_RE = re.compile(r"\b[A-Z0-9]{2,}(?:_[A-Z0-9]+)+\b")
+
+
+def table_like_mentions(text: str) -> set:
+    """Best-effort extraction of catalog-table-shaped tokens from free prose."""
+    return set(_TABLE_LIKE_RE.findall(text or ""))
+
+
+def decide_search(answer: str, retrieved_tables) -> list:
+    """Warn-don't-block gate for a search sub-agent's prose answer.
+
+    Mirrors ``decide()``'s philosophy: never withhold the answer, just attach
+    severity-tagged warnings. Consumes the answer text + the set of tables actually
+    retrieved this request (not the model's claims). Checks:
+      * destructive keywords / injection signal (scan_output)        -> [CRITICAL]
+      * a denylisted table named anywhere in the answer              -> [CRITICAL]
+      * a catalog-shaped table mentioned but never retrieved (heuristic) -> [HIGH]
+    """
+    warnings: list[str] = []
+    retrieved_lower = {t.lower() for t in retrieved_tables}
+
+    clean, detail = scan_output(answer)
+    if not clean:
+        warnings.append(f"[CRITICAL] unsafe output: {detail}")
+
+    low = (answer or "").lower()
+    denied = sorted(t for t in TABLE_DENYLIST if t.lower() in low)
+    if denied:
+        _log.warning("decide_search | WARN — denylisted table named in answer=%s", denied)
+        warnings.append(f"[CRITICAL] policy: denylisted table(s) named in answer: {denied}")
+
+    mentioned = table_like_mentions(answer)
+    ungrounded = sorted(t for t in mentioned if t.lower() not in retrieved_lower)
+    if ungrounded:
+        _log.warning(
+            "decide_search | WARN — table(s) named in answer but never retrieved=%s"
+            "  reason: heuristic grounding; possible hallucination",
+            ungrounded,
+        )
+        warnings.append(
+            f"[HIGH] grounding: table(s) named but never retrieved: {ungrounded}")
+
+    if warnings:
+        _log.warning("decide_search | PASS WITH WARNINGS (%d) — %s", len(warnings), warnings)
+    else:
+        _log.info("decide_search | ALL CHECKS PASSED — answer grounded in retrieved tables")
+    return warnings
+
+
+# --------------------------------------------------------------------------
 # Compose
 # --------------------------------------------------------------------------
 
