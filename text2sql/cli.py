@@ -29,6 +29,10 @@ def format_result(r: Text2SQLResult) -> str:
     if r.assumptions:
         lines.append("\nAssumptions (verify before running):")
         lines.extend(f"  • {a}" for a in r.assumptions)
+    if r.warnings:
+        lines.append("\n⚠️  GATE WARNINGS — this draft did not clear every safety gate."
+                     " Review carefully before use:")
+        lines.extend(f"  ⚠️  {w}" for w in r.warnings)
     lines.append(f"\nSQL:\n{r.sql}\n")
     return "\n".join(lines)
 

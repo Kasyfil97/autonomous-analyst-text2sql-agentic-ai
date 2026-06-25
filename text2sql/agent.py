@@ -3,8 +3,11 @@
 Flow: the agent researches via the knowledge tools, then emits a JSON object describing
 its draft. We parse that (JSON-from-final-text — chosen primary because forced
 structured-output forces a *single* tool call and would block the retrieval tools), then
-run the gates, which are authoritative: any failure becomes a decline. The dialect is
-taken deterministically from the cited top ERA precedent's ``query_engine``.
+run the gates. The gates are authoritative but warn-don't-block: a failing gate attaches
+a severity-tagged warning to the result instead of declining, so the draft still reaches
+the human reviewer. The only hard declines left are *no parseable answer* and *no SQL at
+all* — there is nothing to return in those cases. The dialect is taken deterministically
+from the cited top ERA precedent's ``query_engine``.
 """
 from __future__ import annotations
 
@@ -43,6 +46,7 @@ class Text2SQLResult(BaseModel):
     dialect: str | None = None
     declined: bool = False
     missing: str | None = None
+    warnings: list[str] = Field(default_factory=list)  # severity-tagged gate findings
 
     @classmethod
     def decline(cls, reason: str) -> "Text2SQLResult":
@@ -177,42 +181,49 @@ def apply_gates(result: Text2SQLResult, ctx: RetrievalContext, conn, *,
         known_tables=known_tables(conn),
         ground_warn=ground_warn,
     )
-    if not decision.ok:
-        _log.warning("apply_gates | DECLINE — gate=%s  detail=%s", decision.reason, decision.detail)
-        return Text2SQLResult.decline(f"{decision.reason}: {decision.detail}")
+    warnings = list(decision.warnings)
 
     # Accumulator authority: every referenced table must have actually been retrieved
     # (catches a model that claims a table it never looked up). Case-insensitive —
-    # sqlglot keeps the model's case, retrieved_tables keep the catalog's.
+    # sqlglot keeps the model's case, retrieved_tables keep the catalog's. No longer a
+    # decline — surfaced as a warning so the draft still reaches the reviewer.
     retrieved_lower = {t.lower() for t in ctx.retrieved_tables}
     unretrieved = {t for t in decision.referenced_tables
                    if t.lower() not in retrieved_lower}
     if unretrieved:
         _log.warning(
-            "apply_gates | DECLINE — accumulator gate: tables referenced but never fetched=%s"
+            "apply_gates | WARN — accumulator gate: tables referenced but never fetched=%s"
             "  reason: model used table names it never looked up via search_schema/get_table_schema",
             sorted(unretrieved),
         )
-        return Text2SQLResult.decline(
-            f"grounding: referenced table(s) never retrieved: {sorted(unretrieved)}")
-    _log.info(
-        "apply_gates | accumulator PASS — all %d table(s) were retrieved via tools",
-        len(decision.referenced_tables),
-    )
+        warnings.append(
+            f"[HIGH] grounding: referenced table(s) never retrieved: {sorted(unretrieved)}")
+    else:
+        _log.info(
+            "apply_gates | accumulator PASS — all %d table(s) were retrieved via tools",
+            len(decision.referenced_tables),
+        )
 
-    # Output scan: ban destructive SQL anywhere in the answer text.
+    # Output scan: destructive SQL anywhere in the answer text -> warning (not a decline).
     clean, detail = gates.scan_output(f"{result.explanation or ''}\n{result.sql}")
     if not clean:
-        _log.warning("apply_gates | DECLINE — output scan: %s", detail)
-        return Text2SQLResult.decline(f"unsafe output: {detail}")
+        _log.warning("apply_gates | WARN — output scan: %s", detail)
+        warnings.append(f"[CRITICAL] unsafe output: {detail}")
 
     result.dialect = dialect
-    result.tables_used = sorted(decision.referenced_tables)
+    result.tables_used = sorted(decision.referenced_tables) or result.tables_used
+    result.warnings = warnings
     result.sql = gates.UNVERIFIED_MARKER + "\n" + result.sql
-    _log.info(
-        "apply_gates | APPROVED — dialect=%r  tables=%s  UNVERIFIED_MARKER prepended",
-        result.dialect, result.tables_used,
-    )
+    if warnings:
+        _log.warning(
+            "apply_gates | RETURNED WITH WARNINGS (%d) — dialect=%r  tables=%s  warnings=%s",
+            len(warnings), result.dialect, result.tables_used, warnings,
+        )
+    else:
+        _log.info(
+            "apply_gates | APPROVED — dialect=%r  tables=%s  UNVERIFIED_MARKER prepended",
+            result.dialect, result.tables_used,
+        )
     return result
 
 
@@ -255,10 +266,10 @@ def generate_sql(question: str, *, session=None, conn=None) -> Text2SQLResult:
             )
         else:
             _log.info(
-                "generate_sql APPROVED | elapsed=%.3fs  dialect=%r  tables=%s  precedents=%s"
-                "  assumptions=%s",
+                "generate_sql RETURNED | elapsed=%.3fs  dialect=%r  tables=%s  precedents=%s"
+                "  assumptions=%s  warnings=%s",
                 elapsed, result.dialect, result.tables_used, result.precedent_ids,
-                result.assumptions,
+                result.assumptions, result.warnings,
             )
         return result
     finally:

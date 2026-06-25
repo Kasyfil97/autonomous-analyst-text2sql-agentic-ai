@@ -122,10 +122,10 @@ def hybrid_search(kb: str, question: str, *, limit: int = 10, pool: int = 50, co
             FROM {kb}
             ORDER BY dense <=> %(qd)s::vector LIMIT %(pool)s),
         s AS (
-            SELECT id, row_number() OVER (ORDER BY sparse <#> %(qs)s::sparsevec) AS rk,
-                   -(sparse <#> %(qs)s::sparsevec) AS bm25
+            SELECT id, row_number() OVER (ORDER BY sparse::sparsevec <#> %(qs)s::sparsevec) AS rk,
+                   -(sparse::sparsevec <#> %(qs)s::sparsevec) AS bm25
             FROM {kb}
-            ORDER BY sparse <#> %(qs)s::sparsevec LIMIT %(pool)s)
+            ORDER BY sparse::sparsevec <#> %(qs)s::sparsevec LIMIT %(pool)s)
         SELECT COALESCE(d.id, s.id) AS id,
                COALESCE(1.0/(60+d.rk), 0) + COALESCE(1.0/(60+s.rk), 0) AS score,
                d.cosine AS dense_cosine,

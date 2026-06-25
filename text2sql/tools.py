@@ -130,7 +130,7 @@ def _fetch_table_columns(conn, table_name: str) -> list[dict]:
     with conn.cursor() as cur:
         cur.execute(
             "SELECT field_name, business_title, description, data_type "
-            "FROM schema_columns WHERE table_name = %s ORDER BY field_name", (table_name,))
+            "FROM schema_columns WHERE LOWER(table_name) = LOWER(%s) ORDER BY field_name", (table_name,))
         cols = [c.name for c in cur.description]
         return [dict(zip(cols, r)) for r in cur.fetchall()]
 
@@ -256,7 +256,7 @@ def table_schema_text(ctx: RetrievalContext, table_name: str) -> str:
         return (f"No column dictionary found for table '{table_name}'. "
                 "(On the sample export some tables are absent / use tid<N> ids.)")
 
-    ctx.retrieved_tables.add(table_name)
+    ctx.retrieved_tables.add(table_name.lower())
     ctx.retrieved_columns.update(c["field_name"] for c in columns)
     col_names = [c["field_name"] for c in columns]
     _log.info(

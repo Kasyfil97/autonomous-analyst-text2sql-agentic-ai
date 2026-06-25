@@ -130,38 +130,57 @@ def test_scan_output_clean_select_ok():
 # -- decide() composition (gates authoritative) ------------------------------
 
 def test_decide_passes_clean_grounded_query():
+    # a clean, grounded, well-covered query has no warnings
     d = G.decide("SELECT branch FROM trx_teller", "spark",
                  era_top_cosine=0.8, schema_top_cosine=0.7,
                  known_tables={"trx_teller"})
-    assert d.ok and "trx_teller" in d.referenced_tables
+    assert d.ok and not d.warnings and "trx_teller" in d.referenced_tables
 
 
-def test_decide_declines_ungrounded_even_if_model_claims_ok():
-    # model produced a query referencing a table that was never in the catalog
+def test_decide_warns_ungrounded_but_still_returns():
+    # warn-don't-block: an ungrounded table surfaces a grounding warning, not a decline
     d = G.decide("SELECT x FROM ghost_table", "spark",
                  era_top_cosine=0.8, schema_top_cosine=0.7,
                  known_tables={"real_table"})
-    assert not d.ok and d.reason == "grounding"
+    assert d.ok and any("grounding" in w for w in d.warnings)
+    assert "ghost_table" in d.referenced_tables
 
 
 def test_decide_passes_schema_first_without_precedent():
-    # no confident precedent but strong schema -> coverage no longer blocks; query is
-    # grounded, so decide() approves (precedent is advisory)
+    # no confident precedent but strong schema -> no coverage warning; query is grounded
     d = G.decide("SELECT branch FROM trx_teller", "spark",
                  era_top_cosine=0.1, schema_top_cosine=0.7,
                  known_tables={"trx_teller"})
-    assert d.ok and "trx_teller" in d.referenced_tables
+    assert d.ok and not d.warnings and "trx_teller" in d.referenced_tables
 
 
-def test_decide_declines_on_weak_schema_coverage():
-    # the schema floor still gates at the coverage layer, regardless of precedent
+def test_decide_warns_on_weak_schema_coverage():
+    # weak schema coverage is now a low-severity warning, not a decline
     d = G.decide("SELECT branch FROM trx_teller", "spark",
                  era_top_cosine=0.8, schema_top_cosine=0.2,
                  known_tables={"trx_teller"})
-    assert not d.ok and d.reason == "coverage"
+    assert d.ok and any("coverage" in w for w in d.warnings)
 
 
-def test_decide_declines_unsafe_sql():
+def test_decide_warns_unsafe_sql_and_recovers_identifiers():
+    # unsafe SQL becomes a CRITICAL warning; identifiers are still extracted best-effort
     d = G.decide("DROP TABLE t", "spark",
                  era_top_cosine=0.8, schema_top_cosine=0.7, known_tables={"t"})
-    assert not d.ok and d.reason == "unsafe_sql"
+    assert d.ok and any("unsafe_sql" in w for w in d.warnings)
+    assert any("CRITICAL" in w for w in d.warnings)
+
+
+def test_decide_warns_denylisted_table():
+    # a denylisted/PII table still produces SQL, flagged CRITICAL
+    d = G.decide("SELECT id FROM era_tickets", "spark",
+                 era_top_cosine=0.8, schema_top_cosine=0.7,
+                 known_tables={"era_tickets"})
+    assert d.ok and any("policy" in w and "era_tickets" in w for w in d.warnings)
+
+
+def test_decide_accumulates_multiple_warnings():
+    # weak coverage + ungrounded table -> two independent warnings
+    d = G.decide("SELECT x FROM ghost_table", "spark",
+                 era_top_cosine=0.1, schema_top_cosine=0.2,
+                 known_tables={"real_table"})
+    assert d.ok and len(d.warnings) >= 2

@@ -1,7 +1,12 @@
-"""Code-enforced, fail-closed safety + decline gates (plan U5/KD3/KD11).
+"""Code-enforced safety gates (plan U5/KD3/KD11), warn-don't-block.
 
 The gates are authoritative over the model: ``decide()`` consumes only structured gate
-outputs, never the model's free-text claims. Layers:
+outputs, never the model's free-text claims. Each gate that fails appends a
+severity-tagged entry to ``Decision.warnings`` rather than declining — drafts are never
+executed and a human reviews them, so the system surfaces the SQL plus every concern
+instead of withholding it. The individual gate functions below still return plain
+pass/fail verdicts; ``decide()`` is what translates those into non-blocking warnings.
+Layers:
 
   * ``validate_sql``  — sqlglot parse (target dialect), full-AST, single read-only SELECT
                         only; fail-closed on parse errors / forbidden nodes / dangerous
@@ -67,6 +72,7 @@ class Decision:
     detail: str | None = None
     referenced_tables: set = field(default_factory=set)
     referenced_columns: set = field(default_factory=set)
+    warnings: list = field(default_factory=list)  # severity-tagged gate findings (non-blocking)
 
 
 def _sqlglot_dialect(engine: str | None) -> str | None:
@@ -142,6 +148,26 @@ def validate_sql(sql: str, dialect: str | None = None, *, strict_functions: bool
         sorted(tables), sorted(columns),
     )
     return True, None, tables, columns
+
+
+def _extract_identifiers(sql: str, dialect: str | None = None):
+    """Best-effort (tables, columns) extraction for SQL that failed validation.
+
+    When ``validate_sql`` rejects a draft (e.g. a forbidden DDL node), it returns empty
+    sets — but in warn-don't-block mode the policy/grounding gates still need identifiers
+    to flag. Parse permissively under the resolved dialect then the spark fallback;
+    return empty sets only when the SQL is wholly unparseable.
+    """
+    glot = _sqlglot_dialect(dialect)
+    for read in (glot or "spark", "spark"):
+        try:
+            statements = [s for s in sqlglot.parse(sql, read=read) if s is not None]
+        except Exception:  # noqa: BLE001 — try the next dialect, else give up
+            continue
+        tables = {t.name for s in statements for t in s.find_all(exp.Table) if t.name}
+        columns = {c.name for s in statements for c in s.find_all(exp.Column) if c.name}
+        return tables, columns
+    return set(), set()
 
 
 # --------------------------------------------------------------------------
@@ -271,45 +297,50 @@ def scan_output(text: str):
 def decide(sql, dialect, *, era_top_cosine, schema_top_cosine, known_tables,
            restricted_columns=None, ground_warn=False, strict_functions=False,
            era_floor=0.45, schema_floor=0.40) -> Decision:
-    """Compose all gates into a single pass / decline decision. Fail-closed.
+    """Compose all gates into a single warn-don't-block decision.
 
     Consumes only structured signals (scores, parsed identifiers) — never the model's
-    textual claims. Order: coverage -> SQL safety -> policy -> grounding.
+    textual claims. Every gate that fails appends a severity-tagged warning instead of
+    declining: the draft is never executed and a human reviews it, so we surface SQL +
+    the full list of concerns rather than withholding it. Order: coverage -> SQL safety
+    -> policy -> grounding. ``ok`` stays True; callers must inspect ``warnings``.
     """
     _log.info(
         "decide | START — era_cosine=%.3f  schema_cosine=%.3f  dialect=%r  sql_len=%d",
         era_top_cosine, schema_top_cosine, dialect, len(sql or ""),
     )
+    warnings: list[str] = []
 
-    # Gate 1: coverage
+    # Gate 1: coverage (numeric threshold — low severity; precedent already advisory)
     cov_ok, cov_detail = coverage_ok(era_top_cosine, schema_top_cosine,
                                      era_floor=era_floor, schema_floor=schema_floor)
     if not cov_ok:
-        _log.warning("decide | DECLINED at gate=coverage — %s", cov_detail)
-        return Decision(False, "coverage", cov_detail)
+        warnings.append(f"[LOW] coverage: {cov_detail}")
 
-    # Gate 2: SQL safety
+    # Gate 2: SQL safety. On failure, recover identifiers best-effort so the policy and
+    # grounding gates can still inspect the draft.
     safe, detail, tables, columns = validate_sql(sql, dialect,
                                                  strict_functions=strict_functions)
     if not safe:
-        _log.warning("decide | DECLINED at gate=unsafe_sql — %s", detail)
-        return Decision(False, "unsafe_sql", detail)
+        warnings.append(f"[CRITICAL] unsafe_sql: {detail}")
+        if not tables and not columns:
+            tables, columns = _extract_identifiers(sql, dialect)
 
     # Gate 3: policy (denylist + PII columns)
     pol_ok, pol_detail = policy_ok(tables, columns, restricted_columns=restricted_columns)
     if not pol_ok:
-        _log.warning("decide | DECLINED at gate=policy — %s", pol_detail)
-        return Decision(False, "policy", pol_detail, tables, columns)
+        warnings.append(f"[CRITICAL] policy: {pol_detail}")
 
     # Gate 4: grounding (table catalog check)
     grounded, missing = check_grounding(tables, known_tables, warn=ground_warn)
     if not grounded:
-        detail = f"unknown identifier(s): {sorted(missing)}"
-        _log.warning("decide | DECLINED at gate=grounding — %s", detail)
-        return Decision(False, "grounding", detail, tables, columns)
+        warnings.append(f"[HIGH] grounding: unknown identifier(s): {sorted(missing)}")
 
-    _log.info(
-        "decide | ALL GATES PASSED — tables=%s  columns=%s",
-        sorted(tables), sorted(columns),
-    )
-    return Decision(True, None, None, tables, columns)
+    if warnings:
+        _log.warning("decide | PASS WITH WARNINGS (%d) — %s", len(warnings), warnings)
+    else:
+        _log.info(
+            "decide | ALL GATES PASSED — tables=%s  columns=%s",
+            sorted(tables), sorted(columns),
+        )
+    return Decision(True, None, None, tables, columns, warnings)
