@@ -44,6 +44,16 @@ Type a question; get a draft SQL query (marked `UNVERIFIED`) with its reasoning,
 precedent ticket id(s), and dialect — or a decline naming what knowledge was missing.
 Set `T2S_DEBUG=1` for verbose auth output.
 
+### Web chat UI
+
+```bash
+python -m text2sql.web
+```
+
+Open `http://127.0.0.1:8000` in a browser. The UI provides a modern chat interface over
+the same orchestrator as the CLI, including SQL drafts, warnings, assumptions, source
+tables, ERA precedent IDs, and KB search answers. The web server does not execute SQL.
+
 ## Tests
 
 ```bash
