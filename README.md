@@ -1,25 +1,32 @@
 # Text-to-SQL Agent
 
 An agent that turns a natural-language question (Indonesian or English) into a **draft
-SQL query** — it does **not** execute SQL. Answers are grounded in two Postgres knowledge
-bases (see [`RETRIEVAL.md`](RETRIEVAL.md)): ERA ticket precedents and the datalake schema
-catalog. Built on the [Strands Agents SDK](https://strandsagents.com) driving
-**gpt-oss-120b on AWS Bedrock** through a federated OIDC session.
+SQL query** or a **prose KB answer** — it does **not** execute SQL. Answers are grounded
+in two Postgres knowledge bases (see [`RETRIEVAL.md`](RETRIEVAL.md)): ERA ticket
+precedents and the datalake schema catalog. Built on the
+[Strands Agents SDK](https://strandsagents.com) driving **gpt-oss-120b on AWS Bedrock**
+through a federated OIDC session.
 
 ## How it works
 
 ```
-question ─▶ Strands Agent (custom Bedrock provider, gpt-oss-120b)
-              ├─ search_era_knowledge   (how similar cases were solved)
-              ├─ search_schema          (candidate tables/columns, as DDL)
-              └─ get_table_schema       (authoritative column dictionary)
-            ─▶ JSON draft ─▶ gates (coverage · SELECT-only · grounding · policy · scan)
-            ─▶ SQL + reasoning + sources + dialect   (or an honest decline)
+question ─▶ Orchestrator (forced tool-call intent router)
+              ├─ intent=sql    ─▶ Text2SQL agent (Strands, gpt-oss-120b)
+              │                     ├─ search_era_knowledge   (precedent SQL + notes)
+              │                     ├─ search_schema          (candidate tables/columns, DDL)
+              │                     └─ get_table_schema       (authoritative column dict)
+              │                   ─▶ JSON draft ─▶ gates (coverage · SELECT-only · grounding · policy · scan)
+              │                   ─▶ SQL + warnings + assumptions + sources + dialect
+              ├─ intent=search ─▶ Search agent (same tools, prose output)
+              │                   ─▶ grounded KB answer + source tables/ERA IDs + warnings
+              └─ intent=other  ─▶ bilingual out-of-scope message (no sub-agent invoked)
 ```
 
 The model never reaches a SQL execution path; retrieved content is treated as untrusted
-and PII-redacted before it enters the prompt; the gates are authoritative over the model
-(a failed gate becomes a decline). See
+and PII-redacted before it enters the prompt. Gates are **warn-don't-block**: a failing
+gate attaches a severity-tagged warning to the result instead of declining, so the draft
+still reaches the human reviewer. The only hard declines are no-parseable-answer and
+no-SQL, where there is nothing to return. See
 [`docs/plans/2026-06-19-001-feat-text2sql-agent-plan.md`](docs/plans/2026-06-19-001-feat-text2sql-agent-plan.md).
 
 ## Setup
@@ -41,18 +48,20 @@ python -m text2sql.cli
 ```
 
 Type a question; get a draft SQL query (marked `UNVERIFIED`) with its reasoning,
-precedent ticket id(s), and dialect — or a decline naming what knowledge was missing.
-Set `T2S_DEBUG=1` for verbose auth output.
+precedent ticket id(s), and dialect — or a KB answer in prose — depending on intent.
+Set `T2S_DEBUG=1` for verbose auth output. Set `T2S_AUDIT_LEVEL=DEBUG` for gate/retrieval
+internals.
 
 ### Web chat UI
 
 ```bash
 python -m text2sql.web
+python -m text2sql.web --host 0.0.0.0 --port 9000   # optional bind overrides
 ```
 
 Open `http://127.0.0.1:8000` in a browser. The UI provides a modern chat interface over
-the same orchestrator as the CLI, including SQL drafts, warnings, assumptions, source
-tables, ERA precedent IDs, and KB search answers. The web server does not execute SQL.
+the orchestrator, supporting both SQL drafts and KB search answers. It displays warnings,
+assumptions, source tables, and ERA precedent IDs. The web server does not execute SQL.
 
 ## Tests
 
@@ -61,9 +70,28 @@ pytest                              # unit + live-KB integration (80 tests)
 python tests/smoke_live_tool.py     # U2.5 live gate: gpt-oss tool-calling via Bedrock
 ```
 
+## Key modules
+
+| File | Purpose |
+|---|---|
+| `text2sql/orchestrator.py` | Intent router — forced tool-call classification → sql / search / other |
+| `text2sql/agent.py` | Text2SQL sub-agent: Strands loop + `parse_result()` + `apply_gates()` |
+| `text2sql/search_agent.py` | Search sub-agent: KB-exploration questions answered in prose |
+| `text2sql/gates.py` | Safety gates (warn-don't-block): SQL validation, grounding, policy, coverage, output scan |
+| `text2sql/tools.py` | Three `@tool` functions; `RetrievalContext`; PII redaction |
+| `text2sql/retrieval.py` | Hybrid dense + sparse BM25 RRF retrieval over KB tables |
+| `text2sql/bedrock_model.py` | Custom `Strands.Model` for gpt-oss (ConverseStream workaround) |
+| `text2sql/audit_log.py` | Per-request structured logger; request IDs via contextvars |
+| `text2sql/prompt_loader.py` | Loads named prompts from `prompts/prompts.md` (parsed once, cached) |
+| `bedrock_session.py` | OIDC federation and `BedrockSession.invoke()` seam; Mantle fallback |
+| `text2sql/cli.py` | Interactive REPL entry point |
+| `text2sql/web.py` | Single-page chat UI over stdlib `ThreadingHTTPServer`; delegates to orchestrator |
+
 ## Status / limitations
 
-- v1 runs against the **200-row sample** schema export, so it over-declines by design;
-  product metrics (analyst accept rate / edit distance) require the **full catalog**.
+- v1 runs against the **200-row sample** schema export, so grounding warnings are expected;
+  production accuracy requires the **full catalog**.
 - **Production prerequisite:** the PII data-classification audit (R13) that the policy
   gate and redaction key off — see the plan's Open Questions.
+- Gates are currently **warn-don't-block**; in production the grounding and policy gates
+  should move back to fail-closed once the full catalog and R13 classification are in place.
