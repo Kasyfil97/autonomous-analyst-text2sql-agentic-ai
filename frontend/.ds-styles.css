@@ -3,8 +3,8 @@
 @layer theme, base, components, utilities;
 @layer theme {
   :root, :host {
-    --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
-    --font-mono: var(--font-plex-mono), ui-monospace, "Cascadia Code", Consolas, monospace;
+    --font-sans: var(--font-instrument-sans), ui-sans-serif, system-ui, sans-serif;
+    --font-mono: var(--font-jetbrains-mono), ui-monospace, "JetBrains Mono", Consolas, monospace;
     --color-white: #fff;
     --spacing: 0.25rem;
     --container-xs: 20rem;
@@ -16,6 +16,8 @@
     --text-sm--line-height: calc(1.25 / 0.875);
     --text-base: 1rem;
     --text-base--line-height: calc(1.5 / 1);
+    --text-lg: 1.125rem;
+    --text-lg--line-height: calc(1.75 / 1.125);
     --text-xl: 1.25rem;
     --text-xl--line-height: calc(1.75 / 1.25);
     --text-2xl: 1.5rem;
@@ -25,6 +27,7 @@
     --font-weight-semibold: 600;
     --font-weight-bold: 700;
     --tracking-tight: -0.025em;
+    --tracking-normal: 0em;
     --tracking-wide: 0.025em;
     --tracking-widest: 0.1em;
     --leading-tight: 1.25;
@@ -40,19 +43,21 @@
     --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     --default-font-family: var(--font-sans);
     --default-mono-font-family: var(--font-mono);
-    --color-bg: #f5f7f9;
-    --color-panel: #ffffff;
-    --color-panel-2: #eef2f6;
-    --color-ink: #0f1b2d;
-    --color-muted: #5b6b7f;
-    --color-line: #dde4ec;
-    --color-accent: #0f766e;
-    --color-accent-2: #1d4ed8;
+    --color-bg: #eae6d9;
+    --color-panel: #fffdf8;
+    --color-panel-2: #f2eee2;
+    --color-ink: #24211b;
+    --color-muted: #5c5647;
+    --color-line: #e0d9c6;
+    --color-accent: #c96442;
+    --color-accent-2: #2f5ae0;
     --color-warn: #92500a;
-    --color-warn-bg: #fff7ed;
-    --color-warn-line: #f4c67c;
+    --color-warn-bg: #fbefd9;
+    --color-warn-line: #e4b77a;
     --color-danger: #b42318;
-    --color-code: #0c1626;
+    --color-code: #2e2c26;
+    --color-code-text: #f0eee6;
+    --color-code-muted: #a79e86;
   }
 }
 @layer base {
@@ -204,8 +209,31 @@
   }
 }
 @layer utilities {
-  .mx-auto {
-    margin-inline: auto;
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border-width: 0;
+  }
+  .absolute {
+    position: absolute;
+  }
+  .fixed {
+    position: fixed;
+  }
+  .relative {
+    position: relative;
+  }
+  .inset-0 {
+    inset: 0px;
+  }
+  .z-20 {
+    z-index: 20;
   }
   .mt-0\.5 {
     margin-top: calc(var(--spacing) * 0.5);
@@ -231,9 +259,6 @@
   .mt-6 {
     margin-top: calc(var(--spacing) * 6);
   }
-  .mt-7 {
-    margin-top: calc(var(--spacing) * 7);
-  }
   .mt-\[2px\] {
     margin-top: 2px;
   }
@@ -242,6 +267,9 @@
   }
   .mt-px {
     margin-top: 1px;
+  }
+  .mb-1\.5 {
+    margin-bottom: calc(var(--spacing) * 1.5);
   }
   .mb-2 {
     margin-bottom: calc(var(--spacing) * 2);
@@ -252,6 +280,9 @@
   .ml-1\.5 {
     margin-left: calc(var(--spacing) * 1.5);
   }
+  .ml-2 {
+    margin-left: calc(var(--spacing) * 2);
+  }
   .line-clamp-2 {
     overflow: hidden;
     display: -webkit-box;
@@ -261,11 +292,17 @@
   .block {
     display: block;
   }
+  .contents {
+    display: contents;
+  }
   .flex {
     display: flex;
   }
   .grid {
     display: grid;
+  }
+  .hidden {
+    display: none;
   }
   .inline-flex {
     display: inline-flex;
@@ -285,8 +322,8 @@
   .h-8 {
     height: calc(var(--spacing) * 8);
   }
-  .h-10 {
-    height: calc(var(--spacing) * 10);
+  .h-9 {
+    height: calc(var(--spacing) * 9);
   }
   .h-28 {
     height: calc(var(--spacing) * 28);
@@ -303,14 +340,14 @@
   .h-screen {
     height: 100vh;
   }
+  .max-h-56 {
+    max-height: calc(var(--spacing) * 56);
+  }
   .min-h-0 {
     min-height: 0px;
   }
   .min-h-full {
     min-height: 100%;
-  }
-  .min-h-screen {
-    min-height: 100vh;
   }
   .w-1\.5 {
     width: calc(var(--spacing) * 1.5);
@@ -324,8 +361,11 @@
   .w-5 {
     width: calc(var(--spacing) * 5);
   }
-  .w-10 {
-    width: calc(var(--spacing) * 10);
+  .w-9 {
+    width: calc(var(--spacing) * 9);
+  }
+  .w-\[420px\] {
+    width: 420px;
   }
   .w-fit {
     width: fit-content;
@@ -333,14 +373,11 @@
   .w-full {
     width: 100%;
   }
-  .max-w-3xl {
-    max-width: var(--container-3xl);
-  }
-  .max-w-4xl {
-    max-width: var(--container-4xl);
-  }
   .max-w-\[85\%\] {
     max-width: 85%;
+  }
+  .max-w-\[92\%\] {
+    max-width: 92%;
   }
   .max-w-xs {
     max-width: var(--container-xs);
@@ -357,11 +394,23 @@
   .border-collapse {
     border-collapse: collapse;
   }
+  .transform {
+    transform: var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,) var(--tw-skew-x,) var(--tw-skew-y,);
+  }
   .animate-ping {
     animation: var(--animate-ping);
   }
   .animate-pulse {
     animation: var(--animate-pulse);
+  }
+  .cursor-default {
+    cursor: default;
+  }
+  .cursor-grab {
+    cursor: grab;
+  }
+  .cursor-not-allowed {
+    cursor: not-allowed;
   }
   .cursor-pointer {
     cursor: pointer;
@@ -369,14 +418,8 @@
   .resize-y {
     resize: vertical;
   }
-  .grid-cols-\[200px_minmax\(0\,1fr\)\] {
-    grid-template-columns: 200px minmax(0,1fr);
-  }
-  .grid-cols-\[248px_minmax\(0\,1fr\)\] {
-    grid-template-columns: 248px minmax(0,1fr);
-  }
-  .grid-rows-\[auto_minmax\(0\,1fr\)\] {
-    grid-template-rows: auto minmax(0,1fr);
+  .grid-cols-\[240px_minmax\(360px\,1fr\)_minmax\(320px\,1fr\)\] {
+    grid-template-columns: 240px minmax(360px,1fr) minmax(320px,1fr);
   }
   .flex-col {
     flex-direction: column;
@@ -429,8 +472,8 @@
   .gap-4 {
     gap: calc(var(--spacing) * 4);
   }
-  .gap-8 {
-    gap: calc(var(--spacing) * 8);
+  .gap-5 {
+    gap: calc(var(--spacing) * 5);
   }
   :where(.space-y-5 > :not(:last-child)) {
     --tw-space-y-reverse: 0;
@@ -498,20 +541,37 @@
     border-bottom-style: var(--tw-border-style);
     border-bottom-width: 1px;
   }
+  .border-l {
+    border-left-style: var(--tw-border-style);
+    border-left-width: 1px;
+  }
+  .border-l-4 {
+    border-left-style: var(--tw-border-style);
+    border-left-width: 4px;
+  }
   .border-dashed {
     --tw-border-style: dashed;
     border-style: dashed;
   }
+  .border-\[color\:var\(--color-accent\)\] {
+    border-color: var(--color-accent);
+  }
   .border-\[color\:var\(--color-accent\)\]\/30 {
-    border-color: color-mix(in srgb, #0f766e 30%, transparent);
+    border-color: color-mix(in srgb, #c96442 30%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       border-color: color-mix(in oklab, var(--color-accent) 30%, transparent);
     }
   }
   .border-\[color\:var\(--color-accent\)\]\/40 {
-    border-color: color-mix(in srgb, #0f766e 40%, transparent);
+    border-color: color-mix(in srgb, #c96442 40%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       border-color: color-mix(in oklab, var(--color-accent) 40%, transparent);
+    }
+  }
+  .border-\[color\:var\(--color-danger\)\]\/40 {
+    border-color: color-mix(in srgb, #b42318 40%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--color-danger) 40%, transparent);
     }
   }
   .border-\[color\:var\(--color-line\)\] {
@@ -524,25 +584,25 @@
     background-color: var(--color-accent);
   }
   .bg-\[color\:var\(--color-accent\)\]\/5 {
-    background-color: color-mix(in srgb, #0f766e 5%, transparent);
+    background-color: color-mix(in srgb, #c96442 5%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       background-color: color-mix(in oklab, var(--color-accent) 5%, transparent);
     }
   }
   .bg-\[color\:var\(--color-accent\)\]\/8 {
-    background-color: color-mix(in srgb, #0f766e 8%, transparent);
+    background-color: color-mix(in srgb, #c96442 8%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       background-color: color-mix(in oklab, var(--color-accent) 8%, transparent);
     }
   }
   .bg-\[color\:var\(--color-accent\)\]\/10 {
-    background-color: color-mix(in srgb, #0f766e 10%, transparent);
+    background-color: color-mix(in srgb, #c96442 10%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       background-color: color-mix(in oklab, var(--color-accent) 10%, transparent);
     }
   }
   .bg-\[color\:var\(--color-accent\)\]\/12 {
-    background-color: color-mix(in srgb, #0f766e 12%, transparent);
+    background-color: color-mix(in srgb, #c96442 12%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       background-color: color-mix(in oklab, var(--color-accent) 12%, transparent);
     }
@@ -550,8 +610,23 @@
   .bg-\[color\:var\(--color-code\)\] {
     background-color: var(--color-code);
   }
+  .bg-\[color\:var\(--color-danger\)\]\/5 {
+    background-color: color-mix(in srgb, #b42318 5%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-danger) 5%, transparent);
+    }
+  }
   .bg-\[color\:var\(--color-ink\)\] {
     background-color: var(--color-ink);
+  }
+  .bg-\[color\:var\(--color-ink\)\]\/20 {
+    background-color: color-mix(in srgb, #24211b 20%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-ink) 20%, transparent);
+    }
+  }
+  .bg-\[color\:var\(--color-line\)\] {
+    background-color: var(--color-line);
   }
   .bg-\[color\:var\(--color-panel\)\] {
     background-color: var(--color-panel);
@@ -559,20 +634,26 @@
   .bg-\[color\:var\(--color-panel-2\)\] {
     background-color: var(--color-panel-2);
   }
+  .bg-\[color\:var\(--color-panel-2\)\]\/40 {
+    background-color: color-mix(in srgb, #f2eee2 40%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-panel-2) 40%, transparent);
+    }
+  }
   .bg-\[color\:var\(--color-panel-2\)\]\/50 {
-    background-color: color-mix(in srgb, #eef2f6 50%, transparent);
+    background-color: color-mix(in srgb, #f2eee2 50%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       background-color: color-mix(in oklab, var(--color-panel-2) 50%, transparent);
     }
   }
   .bg-\[color\:var\(--color-panel-2\)\]\/60 {
-    background-color: color-mix(in srgb, #eef2f6 60%, transparent);
+    background-color: color-mix(in srgb, #f2eee2 60%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       background-color: color-mix(in oklab, var(--color-panel-2) 60%, transparent);
     }
   }
   .bg-\[color\:var\(--color-panel-2\)\]\/70 {
-    background-color: color-mix(in srgb, #eef2f6 70%, transparent);
+    background-color: color-mix(in srgb, #f2eee2 70%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       background-color: color-mix(in oklab, var(--color-panel-2) 70%, transparent);
     }
@@ -583,8 +664,14 @@
   .bg-\[color\:var\(--color-warn-bg\)\] {
     background-color: var(--color-warn-bg);
   }
+  .bg-\[color\:var\(--color-warn-bg\)\]\/40 {
+    background-color: color-mix(in srgb, #fbefd9 40%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-warn-bg) 40%, transparent);
+    }
+  }
   .bg-\[color\:var\(--color-warn-bg\)\]\/50 {
-    background-color: color-mix(in srgb, #fff7ed 50%, transparent);
+    background-color: color-mix(in srgb, #fbefd9 50%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       background-color: color-mix(in oklab, var(--color-warn-bg) 50%, transparent);
     }
@@ -592,17 +679,17 @@
   .bg-white {
     background-color: var(--color-white);
   }
-  .bg-white\/70 {
-    background-color: color-mix(in srgb, #fff 70%, transparent);
+  .bg-white\/60 {
+    background-color: color-mix(in srgb, #fff 60%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--color-white) 70%, transparent);
+      background-color: color-mix(in oklab, var(--color-white) 60%, transparent);
     }
   }
   .p-4 {
     padding: calc(var(--spacing) * 4);
   }
-  .p-8 {
-    padding: calc(var(--spacing) * 8);
+  .px-1 {
+    padding-inline: var(--spacing);
   }
   .px-2 {
     padding-inline: calc(var(--spacing) * 2);
@@ -621,9 +708,6 @@
   }
   .px-6 {
     padding-inline: calc(var(--spacing) * 6);
-  }
-  .px-8 {
-    padding-inline: calc(var(--spacing) * 8);
   }
   .py-0\.5 {
     padding-block: calc(var(--spacing) * 0.5);
@@ -652,8 +736,8 @@
   .py-6 {
     padding-block: calc(var(--spacing) * 6);
   }
-  .py-7 {
-    padding-block: calc(var(--spacing) * 7);
+  .py-8 {
+    padding-block: calc(var(--spacing) * 8);
   }
   .py-10 {
     padding-block: calc(var(--spacing) * 10);
@@ -661,8 +745,8 @@
   .pt-4 {
     padding-top: calc(var(--spacing) * 4);
   }
-  .pt-7 {
-    padding-top: calc(var(--spacing) * 7);
+  .pt-6 {
+    padding-top: calc(var(--spacing) * 6);
   }
   .pr-1 {
     padding-right: var(--spacing);
@@ -676,9 +760,6 @@
   .pb-4 {
     padding-bottom: calc(var(--spacing) * 4);
   }
-  .pb-5 {
-    padding-bottom: calc(var(--spacing) * 5);
-  }
   .text-center {
     text-align: center;
   }
@@ -691,21 +772,17 @@
   .font-mono {
     font-family: var(--font-mono);
   }
-  .text-2xl {
-    font-size: var(--text-2xl);
-    line-height: var(--tw-leading, var(--text-2xl--line-height));
-  }
   .text-base {
     font-size: var(--text-base);
     line-height: var(--tw-leading, var(--text-base--line-height));
   }
+  .text-lg {
+    font-size: var(--text-lg);
+    line-height: var(--tw-leading, var(--text-lg--line-height));
+  }
   .text-sm {
     font-size: var(--text-sm);
     line-height: var(--tw-leading, var(--text-sm--line-height));
-  }
-  .text-xl {
-    font-size: var(--text-xl);
-    line-height: var(--tw-leading, var(--text-xl--line-height));
   }
   .text-xs {
     font-size: var(--text-xs);
@@ -758,6 +835,10 @@
     --tw-font-weight: var(--font-weight-semibold);
     font-weight: var(--font-weight-semibold);
   }
+  .tracking-normal {
+    --tw-tracking: var(--tracking-normal);
+    letter-spacing: var(--tracking-normal);
+  }
   .tracking-tight {
     --tw-tracking: var(--tracking-tight);
     letter-spacing: var(--tracking-tight);
@@ -773,17 +854,20 @@
   .whitespace-nowrap {
     white-space: nowrap;
   }
-  .text-\[\#7d93ad\] {
-    color: #7d93ad;
-  }
-  .text-\[\#e8f1fb\] {
-    color: #e8f1fb;
-  }
   .text-\[color\:var\(--color-accent\)\] {
     color: var(--color-accent);
   }
   .text-\[color\:var\(--color-accent-2\)\] {
     color: var(--color-accent-2);
+  }
+  .text-\[color\:var\(--color-code-muted\)\] {
+    color: var(--color-code-muted);
+  }
+  .text-\[color\:var\(--color-code-text\)\] {
+    color: var(--color-code-text);
+  }
+  .text-\[color\:var\(--color-danger\)\] {
+    color: var(--color-danger);
   }
   .text-\[color\:var\(--color-ink\)\] {
     color: var(--color-ink);
@@ -791,14 +875,35 @@
   .text-\[color\:var\(--color-muted\)\] {
     color: var(--color-muted);
   }
+  .text-\[color\:var\(--color-muted\)\]\/60 {
+    color: color-mix(in srgb, #5c5647 60%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      color: color-mix(in oklab, var(--color-muted) 60%, transparent);
+    }
+  }
+  .text-\[color\:var\(--color-muted\)\]\/70 {
+    color: color-mix(in srgb, #5c5647 70%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      color: color-mix(in oklab, var(--color-muted) 70%, transparent);
+    }
+  }
   .text-\[color\:var\(--color-warn\)\] {
     color: var(--color-warn);
   }
   .text-white {
     color: var(--color-white);
   }
+  .text-white\/70 {
+    color: color-mix(in srgb, #fff 70%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      color: color-mix(in oklab, var(--color-white) 70%, transparent);
+    }
+  }
   .capitalize {
     text-transform: capitalize;
+  }
+  .normal-case {
+    text-transform: none;
   }
   .uppercase {
     text-transform: uppercase;
@@ -807,8 +912,9 @@
     --tw-numeric-spacing: tabular-nums;
     font-variant-numeric: var(--tw-ordinal,) var(--tw-slashed-zero,) var(--tw-numeric-figure,) var(--tw-numeric-spacing,) var(--tw-numeric-fraction,);
   }
-  .opacity-70 {
-    opacity: 70%;
+  .shadow-2xl {
+    --tw-shadow: 0 25px 50px -12px var(--tw-shadow-color, rgb(0 0 0 / 0.25));
+    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
   }
   .shadow-\[0_6px_20px_rgba\(15\,23\,42\,0\.05\)\] {
     --tw-shadow: 0 6px 20px var(--tw-shadow-color, rgba(15,23,42,0.05));
@@ -823,7 +929,7 @@
     box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
   }
   .ring-\[color\:var\(--color-accent\)\]\/20 {
-    --tw-ring-color: color-mix(in srgb, #0f766e 20%, transparent);
+    --tw-ring-color: color-mix(in srgb, #c96442 20%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       --tw-ring-color: color-mix(in oklab, var(--color-accent) 20%, transparent);
     }
@@ -845,9 +951,16 @@
     --tw-outline-style: none;
     outline-style: none;
   }
+  .select-none {
+    -webkit-user-select: none;
+    user-select: none;
+  }
   @media (hover: hover) {
     .group-hover\:text-\[color\:var\(--color-accent\)\]:is(:where(.group):hover *) {
       color: var(--color-accent);
+    }
+    .group-hover\:text-\[color\:var\(--color-muted\)\]:is(:where(.group):hover *) {
+      color: var(--color-muted);
     }
     .group-hover\:underline:is(:where(.group):hover *) {
       text-decoration-line: underline;
@@ -856,7 +969,7 @@
       border-color: var(--color-accent);
     }
     .hover\:border-\[color\:var\(--color-accent\)\]\/50:hover {
-      border-color: color-mix(in srgb, #0f766e 50%, transparent);
+      border-color: color-mix(in srgb, #c96442 50%, transparent);
     }
     @supports (color: color-mix(in lab, red, red)) {
       .hover\:border-\[color\:var\(--color-accent\)\]\/50:hover {
@@ -867,7 +980,7 @@
       border-color: var(--color-danger);
     }
     .hover\:bg-\[color\:var\(--color-accent\)\]\/10:hover {
-      background-color: color-mix(in srgb, #0f766e 10%, transparent);
+      background-color: color-mix(in srgb, #c96442 10%, transparent);
     }
     @supports (color: color-mix(in lab, red, red)) {
       .hover\:bg-\[color\:var\(--color-accent\)\]\/10:hover {
@@ -878,7 +991,7 @@
       background-color: var(--color-panel-2);
     }
     .hover\:bg-\[color\:var\(--color-panel-2\)\]\/60:hover {
-      background-color: color-mix(in srgb, #eef2f6 60%, transparent);
+      background-color: color-mix(in srgb, #f2eee2 60%, transparent);
     }
     @supports (color: color-mix(in lab, red, red)) {
       .hover\:bg-\[color\:var\(--color-panel-2\)\]\/60:hover {
@@ -886,7 +999,7 @@
       }
     }
     .hover\:bg-\[color\:var\(--color-warn-line\)\]\/20:hover {
-      background-color: color-mix(in srgb, #f4c67c 20%, transparent);
+      background-color: color-mix(in srgb, #e4b77a 20%, transparent);
     }
     @supports (color: color-mix(in lab, red, red)) {
       .hover\:bg-\[color\:var\(--color-warn-line\)\]\/20:hover {
@@ -901,9 +1014,6 @@
     }
     .hover\:text-\[color\:var\(--color-ink\)\]:hover {
       color: var(--color-ink);
-    }
-    .hover\:underline:hover {
-      text-decoration-line: underline;
     }
     .hover\:brightness-95:hover {
       --tw-brightness: brightness(95%);
@@ -922,7 +1032,7 @@
     box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
   }
   .focus\:ring-\[color\:var\(--color-accent\)\]\/20:focus {
-    --tw-ring-color: color-mix(in srgb, #0f766e 20%, transparent);
+    --tw-ring-color: color-mix(in srgb, #c96442 20%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       --tw-ring-color: color-mix(in oklab, var(--color-accent) 20%, transparent);
     }
@@ -936,10 +1046,16 @@
     box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
   }
   .focus-visible\:ring-\[color\:var\(--color-accent\)\]\/40:focus-visible {
-    --tw-ring-color: color-mix(in srgb, #0f766e 40%, transparent);
+    --tw-ring-color: color-mix(in srgb, #c96442 40%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       --tw-ring-color: color-mix(in oklab, var(--color-accent) 40%, transparent);
     }
+  }
+  .active\:cursor-grabbing:active {
+    cursor: grabbing;
+  }
+  .disabled\:opacity-50:disabled {
+    opacity: 50%;
   }
   .disabled\:opacity-60:disabled {
     opacity: 60%;
@@ -950,7 +1066,7 @@ body {
   height: 100%;
 }
 body {
-  background: radial-gradient(circle at top left, rgba(15, 118, 110, 0.08), transparent 32rem),
+  background: radial-gradient(circle at top left, rgba(201, 100, 66, 0.08), transparent 32rem),
     var(--color-bg);
   color: var(--color-ink);
   font-family: var(--font-sans);
@@ -972,6 +1088,26 @@ body {
     text-align: center;
     color: var(--color-muted);
   }
+}
+@property --tw-rotate-x {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-rotate-y {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-rotate-z {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-skew-x {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-skew-y {
+  syntax: "*";
+  inherits: false;
 }
 @property --tw-space-y-reverse {
   syntax: "*";
@@ -1188,6 +1324,11 @@ body {
 @layer properties {
   @supports ((-webkit-hyphens: none) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color:rgb(from red r g b)))) {
     *, ::before, ::after, ::backdrop {
+      --tw-rotate-x: initial;
+      --tw-rotate-y: initial;
+      --tw-rotate-z: initial;
+      --tw-skew-x: initial;
+      --tw-skew-y: initial;
       --tw-space-y-reverse: 0;
       --tw-divide-y-reverse: 0;
       --tw-border-style: solid;
@@ -1240,104 +1381,104 @@ body {
 }
 
 @font-face {
-  font-family: 'IBM Plex Mono';
+  font-family: 'Instrument Sans';
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: url(./.ds-fonts/ibm-plex-mono-400-latin-ext.woff2) format('woff2');
+  src: url(./.ds-fonts/instrument-sans-400-latin-ext.woff2) format('woff2');
 }
 @font-face {
-  font-family: 'IBM Plex Mono';
+  font-family: 'Instrument Sans';
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: url(./.ds-fonts/ibm-plex-mono-400-latin.woff2) format('woff2');
+  src: url(./.ds-fonts/instrument-sans-400-latin.woff2) format('woff2');
 }
 @font-face {
-  font-family: 'IBM Plex Mono';
+  font-family: 'Instrument Sans';
   font-style: normal;
   font-weight: 500;
   font-display: swap;
-  src: url(./.ds-fonts/ibm-plex-mono-500-latin-ext.woff2) format('woff2');
+  src: url(./.ds-fonts/instrument-sans-500-latin-ext.woff2) format('woff2');
 }
 @font-face {
-  font-family: 'IBM Plex Mono';
+  font-family: 'Instrument Sans';
   font-style: normal;
   font-weight: 500;
   font-display: swap;
-  src: url(./.ds-fonts/ibm-plex-mono-500-latin.woff2) format('woff2');
+  src: url(./.ds-fonts/instrument-sans-500-latin.woff2) format('woff2');
 }
 @font-face {
-  font-family: 'IBM Plex Mono';
+  font-family: 'Instrument Sans';
   font-style: normal;
   font-weight: 600;
   font-display: swap;
-  src: url(./.ds-fonts/ibm-plex-mono-600-latin-ext.woff2) format('woff2');
+  src: url(./.ds-fonts/instrument-sans-600-latin-ext.woff2) format('woff2');
 }
 @font-face {
-  font-family: 'IBM Plex Mono';
+  font-family: 'Instrument Sans';
   font-style: normal;
   font-weight: 600;
   font-display: swap;
-  src: url(./.ds-fonts/ibm-plex-mono-600-latin.woff2) format('woff2');
+  src: url(./.ds-fonts/instrument-sans-600-latin.woff2) format('woff2');
 }
 @font-face {
-  font-family: 'IBM Plex Sans';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url(./.ds-fonts/ibm-plex-sans-400-latin-ext.woff2) format('woff2');
-}
-@font-face {
-  font-family: 'IBM Plex Sans';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url(./.ds-fonts/ibm-plex-sans-400-latin.woff2) format('woff2');
-}
-@font-face {
-  font-family: 'IBM Plex Sans';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url(./.ds-fonts/ibm-plex-sans-500-latin-ext.woff2) format('woff2');
-}
-@font-face {
-  font-family: 'IBM Plex Sans';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url(./.ds-fonts/ibm-plex-sans-500-latin.woff2) format('woff2');
-}
-@font-face {
-  font-family: 'IBM Plex Sans';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url(./.ds-fonts/ibm-plex-sans-600-latin-ext.woff2) format('woff2');
-}
-@font-face {
-  font-family: 'IBM Plex Sans';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url(./.ds-fonts/ibm-plex-sans-600-latin.woff2) format('woff2');
-}
-@font-face {
-  font-family: 'IBM Plex Sans';
+  font-family: 'Instrument Sans';
   font-style: normal;
   font-weight: 700;
   font-display: swap;
-  src: url(./.ds-fonts/ibm-plex-sans-700-latin-ext.woff2) format('woff2');
+  src: url(./.ds-fonts/instrument-sans-700-latin-ext.woff2) format('woff2');
 }
 @font-face {
-  font-family: 'IBM Plex Sans';
+  font-family: 'Instrument Sans';
   font-style: normal;
   font-weight: 700;
   font-display: swap;
-  src: url(./.ds-fonts/ibm-plex-sans-700-latin.woff2) format('woff2');
+  src: url(./.ds-fonts/instrument-sans-700-latin.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(./.ds-fonts/jetbrains-mono-400-latin-ext.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(./.ds-fonts/jetbrains-mono-400-latin.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(./.ds-fonts/jetbrains-mono-500-latin-ext.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(./.ds-fonts/jetbrains-mono-500-latin.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(./.ds-fonts/jetbrains-mono-600-latin-ext.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(./.ds-fonts/jetbrains-mono-600-latin.woff2) format('woff2');
 }
 :root {
-  --font-plex-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-plex-mono: 'IBM Plex Mono', ui-monospace, "Cascadia Code", Consolas, monospace;
+  --font-instrument-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-jetbrains-mono: 'JetBrains Mono', ui-monospace, "JetBrains Mono", Consolas, monospace;
 }

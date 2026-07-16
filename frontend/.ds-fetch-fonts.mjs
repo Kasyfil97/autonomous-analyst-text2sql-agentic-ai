@@ -1,6 +1,7 @@
-// Download the latin + latin-ext IBM Plex woff2 files referenced by the Google
-// Fonts CSS and emit a self-contained @font-face stylesheet pointing at the
-// local copies under ./.ds-fonts/. Latin-only app → other subsets dropped.
+// Download the latin + latin-ext Instrument Sans + JetBrains Mono woff2 files
+// referenced by the Google Fonts CSS and emit a self-contained @font-face
+// stylesheet pointing at the local copies under ./.ds-fonts/. Latin-only app →
+// other subsets dropped.
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 
@@ -28,6 +29,6 @@ for (const b of blocks) {
 
 const out =
   keep.join("\n") +
-  `\n:root {\n  --font-plex-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;\n  --font-plex-mono: 'IBM Plex Mono', ui-monospace, "Cascadia Code", Consolas, monospace;\n}\n`;
+  `\n:root {\n  --font-instrument-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;\n  --font-jetbrains-mono: 'JetBrains Mono', ui-monospace, "JetBrains Mono", Consolas, monospace;\n}\n`;
 writeFileSync(".ds-fonts.css", out);
 console.error(`downloaded ${n} woff2, wrote .ds-fonts.css`);

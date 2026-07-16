@@ -401,7 +401,10 @@ export function AgentPane() {
     <div className="flex h-full min-h-0 flex-col border-l border-[color:var(--color-line)] px-6 py-6">
       <header className="flex items-start justify-between gap-4 pb-4">
         <div>
-          <h1 className="text-lg font-semibold tracking-tight">AI Data Agent</h1>
+          <div className="flex items-baseline gap-2">
+            <h1 className="text-lg font-semibold tracking-tight">AI Data Agent</h1>
+            <span className="text-sm font-normal text-[color:var(--color-muted)]">Agent</span>
+          </div>
           <p className="mt-1 text-sm text-[color:var(--color-muted)]">
             Percakapan analitik — agent menyusun <strong>draft SQL</strong> (tidak dieksekusi).
           </p>
@@ -421,7 +424,10 @@ export function AgentPane() {
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto pr-1">
         {turns.length === 0 && !sending && (
           <div className="rounded-xl border border-dashed border-[color:var(--color-line)] px-6 py-8">
-            <p className="text-sm font-semibold text-[color:var(--color-ink)]">Coba tanyakan</p>
+            <p className="flex items-baseline gap-2 text-sm font-semibold text-[color:var(--color-ink)]">
+              Coba tanyakan
+              <span className="text-xs font-normal text-[color:var(--color-muted)]">Try asking</span>
+            </p>
             <p className="mt-1 text-xs text-[color:var(--color-muted)]">
               Mulai percakapan, atau kirim tabel dari hasil pencarian untuk melampirkannya.
             </p>

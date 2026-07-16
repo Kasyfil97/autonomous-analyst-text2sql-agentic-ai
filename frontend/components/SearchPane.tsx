@@ -80,7 +80,10 @@ export function SearchPane() {
   return (
     <div className="relative flex h-full min-h-0 flex-col">
       <header className="border-b border-[color:var(--color-line)] px-6 pb-4 pt-6">
-        <h1 className="text-lg font-semibold tracking-tight">Cari data BRI</h1>
+        <div className="flex items-baseline gap-2">
+          <h1 className="text-lg font-semibold tracking-tight">Cari data BRI</h1>
+          <span className="text-sm font-normal text-[color:var(--color-muted)]">Search</span>
+        </div>
         <p className="mt-1 text-sm text-[color:var(--color-muted)]">
           Ketik kebutuhan Anda dalam bahasa sehari-hari — pencarian memahami maksud, bukan sekadar
           kata kunci.

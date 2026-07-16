@@ -11,9 +11,9 @@ const result = await postcss([tailwind()]).process(input, {
   from: "app/globals.css",
   to: ".ds-styles.css",
 });
-// Append the self-hosted IBM Plex @font-face rules + the --font-plex-* var
-// definitions (next/font sets these at runtime in the app; the standalone
-// bundle must supply them itself).
+// Append the self-hosted Instrument Sans + JetBrains Mono @font-face rules + the
+// --font-instrument-sans / --font-jetbrains-mono var definitions (next/font sets
+// these at runtime in the app; the standalone bundle must supply them itself).
 const fonts = existsSync(".ds-fonts.css") ? "\n" + readFileSync(".ds-fonts.css", "utf8") : "";
 const css = result.css + fonts;
 writeFileSync(".ds-styles.css", css);

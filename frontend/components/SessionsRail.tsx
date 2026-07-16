@@ -31,7 +31,7 @@ function SageMark() {
       </div>
       <div className="leading-tight">
         <p className="text-[15px] font-semibold tracking-tight text-[color:var(--color-ink)]">Sage</p>
-        <p className="text-[11px] text-[color:var(--color-muted)]">Cari &amp; susun draft SQL</p>
+        <p className="text-[11px] text-[color:var(--color-muted)]">BigData search &amp; generation</p>
       </div>
     </div>
   );
@@ -82,10 +82,13 @@ export function SessionsRail() {
       <button
         type="button"
         onClick={newSession}
-        className="flex items-center justify-center gap-2 rounded-lg bg-[color:var(--color-accent)] px-3 py-2 text-sm font-semibold text-white transition-colors hover:brightness-95"
+        className="flex items-center justify-center gap-2 rounded-lg bg-[color:var(--color-accent)] px-3 py-2 text-white transition-colors hover:brightness-95"
       >
         <span aria-hidden className="text-base leading-none">＋</span>
-        Sesi baru
+        <span className="flex flex-col items-center leading-tight">
+          <span className="text-sm font-semibold">Sesi baru</span>
+          <span className="text-[10px] font-normal text-white/70">New session</span>
+        </span>
       </button>
 
       {/* Session list */}
@@ -133,8 +136,11 @@ export function SessionsRail() {
 
       {/* Category facet (UI label for the `domain` field) */}
       <div className="flex min-h-0 flex-col">
-        <p className="mb-1.5 px-1 text-[11px] font-bold uppercase tracking-widest text-[color:var(--color-muted)]">
+        <p className="mb-1.5 flex items-baseline gap-1.5 px-1 text-[11px] font-bold uppercase tracking-widest text-[color:var(--color-muted)]">
           Kategori
+          <span className="text-[10px] font-medium normal-case tracking-normal text-[color:var(--color-muted)]/70">
+            Category
+          </span>
         </p>
         <div className="flex max-h-56 flex-col gap-0.5 overflow-y-auto">
           <FacetItem label="Semua kategori" active={domain === null} onClick={() => pickDomain(null)} />
@@ -146,18 +152,22 @@ export function SessionsRail() {
 
       <div className="mt-auto flex flex-col gap-3">
         {/* Sort control — currently relevance-only (the backend orders by relevance). */}
-        <div className="px-1 text-[11px] text-[color:var(--color-muted)]">
-          <span className="font-semibold uppercase tracking-widest">Urutkan</span>
-          <span className="ml-2">Relevansi</span>
+        <div className="flex flex-col gap-0.5 px-1 text-[11px] text-[color:var(--color-muted)]">
+          <span>
+            <span className="font-semibold uppercase tracking-widest">Urutkan</span>
+            <span className="ml-2">Relevansi</span>
+          </span>
+          <span className="text-[10px] text-[color:var(--color-muted)]/70">Sort: Relevance</span>
         </div>
 
         <button
           type="button"
           onClick={onClear}
           disabled={!res && sessions.length <= 1}
-          className="rounded-lg border border-[color:var(--color-line)] px-3 py-1.5 text-xs font-semibold text-[color:var(--color-muted)] transition-colors hover:border-[color:var(--color-danger)] hover:text-[color:var(--color-danger)] disabled:opacity-50"
+          className="flex flex-col rounded-lg border border-[color:var(--color-line)] px-3 py-1.5 text-xs font-semibold text-[color:var(--color-muted)] transition-colors hover:border-[color:var(--color-danger)] hover:text-[color:var(--color-danger)] disabled:opacity-50"
         >
-          Hapus riwayat
+          <span>Hapus riwayat</span>
+          <span className="text-[10px] font-normal text-[color:var(--color-muted)]/70">Clear history</span>
         </button>
 
         <div className="rounded-lg border border-[color:var(--color-warn-line)] bg-[color:var(--color-warn-bg)] px-3 py-2.5 text-[11px] leading-relaxed text-[color:var(--color-warn)]">
