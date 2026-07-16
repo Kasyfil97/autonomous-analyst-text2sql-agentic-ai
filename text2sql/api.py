@@ -24,9 +24,11 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from text2sql import agent as _agent
+from text2sql import api_serializers as _serializers
 from text2sql import search_service as _search
 from text2sql.audit_log import get_logger, new_request
 from text2sql.embedding_service import pg_config
@@ -131,6 +133,35 @@ def get_agent_session(request: Request):
     return app.state.session
 
 
+class AgentChatRequest(BaseModel):
+    question: str = Field(..., max_length=8000)
+    attached_tables: list[str] = Field(default_factory=list, max_length=10)
+
+
+def _resolve_attached_tables(names, conn) -> list[str]:
+    """Re-resolve untrusted attached table names against the catalog + denylist (R17a).
+
+    Returns canonical catalog-cased names; anything that does not resolve to a known,
+    non-denylisted table is dropped and never reaches the model prompt.
+    """
+    if not names:
+        return []
+    from text2sql import gates
+
+    by_lower = {t.lower(): t for t in _agent.known_tables(conn)}
+    out: list[str] = []
+    for n in names:
+        if not isinstance(n, str) or not n.strip() or len(n) > 128:
+            continue
+        low = n.strip().lower()
+        if low in gates.TABLE_DENYLIST:
+            continue
+        canon = by_lower.get(low)
+        if canon and canon not in out:
+            out.append(canon)
+    return out[:10]
+
+
 # --------------------------------------------------------------------------
 # Middleware
 # --------------------------------------------------------------------------
@@ -215,10 +246,17 @@ def create_app() -> FastAPI:
     async def search_domains(conn=Depends(get_conn)):
         return {"domains": _search.list_domains(conn)}
 
+    # Sync def → FastAPI runs it in a threadpool, so the blocking Bedrock call in generate_sql
+    # does not stall the event loop. A Bedrock/embedding failure propagates to the generic
+    # error handler (500 envelope); a business decline is returned in-band with declined=True.
     @app.post("/api/agent/chat", dependencies=[Depends(require_auth)])
-    async def agent_chat(conn=Depends(get_conn), session=Depends(get_agent_session)):
-        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED,
-                            detail="agent endpoint lands in Unit 3")
+    def agent_chat(req: AgentChatRequest, conn=Depends(get_conn), session=Depends(get_agent_session)):
+        question = (req.question or "").strip()
+        if not question:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="question is required")
+        attached = _resolve_attached_tables(req.attached_tables, conn)
+        result = _agent.generate_sql(question, session=session, conn=conn, attached_tables=attached)
+        return _serializers.agent_result_to_payload(result)
 
     return app
 

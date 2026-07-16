@@ -386,7 +386,15 @@ reuse one session and distinct pooled connections.
 **Verification:** `/api/search?q=…` returns score-free, denylist-free, PII-redacted cards; a
 denylisted table never appears even when semantically similar.
 
-- [ ] **Unit 3: Agent endpoint + grounding/coverage payload extension (R13a)**
+- [x] **Unit 3: Agent endpoint + grounding/coverage payload extension (R13a)** — DONE
+  (`text2sql/api_serializers.py`, `POST /api/agent/chat`, `Text2SQLResult` +
+  `apply_gates` grounding fields; `tests/test_agent_grounding_payload.py` +
+  `tests/test_api_agent.py`; reconciled the 3 stale warn-don't-block tests in `test_agent.py`).
+  Live end-to-end (real Bedrock) returns a grounded draft. **Observed nuance (for Unit 7 UI):**
+  `grounding_strength` can read `precedent_strong` (ERA retrieved ≥0.45 but uncited) while a
+  `[LOW] coverage` warning fires when the attached-table path leaves `schema_cosine=0`; the UI must
+  present the label + coverage warning coherently (a future refinement could feed the attached-
+  table path into the coverage signal).
 
 **Goal:** Wrap `generate_sql` and make grounding/coverage visible as structured UI fields.
 
@@ -445,7 +453,11 @@ to expect warnings as part of this unit so the "backward-compat baseline" is act
 **Verification:** `/api/agent/chat` returns the existing draft plus structured grounding +
 coverage fields; CLI/`web.py` still function unchanged.
 
-- [ ] **Unit 4: Attached-table grounding seam (R17/R17a)**
+- [x] **Unit 4: Attached-table grounding seam (R17/R17a)** — DONE
+  (`generate_sql(..., attached_tables=)` pre-seeds via `table_schema_text` through the real
+  retrieval path + threads DDL into the prompt; `api._resolve_attached_tables` re-resolves untrusted
+  names against the catalog + denylist, caps N≤10 / len≤128; `tests/test_attached_table_grounding.py`).
+  Live smoke: an attached search table came back grounded in the draft.
 
 **Goal:** Let a table selected in Search be attached to an agent question and count as grounded
 without weakening the accumulator gate.

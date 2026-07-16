@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from text2sql import api
+from text2sql.agent import Text2SQLResult
 
 
 class FakeConn:
@@ -45,9 +46,12 @@ def fakes(monkeypatch):
     monkeypatch.setattr(api, "build_pool", lambda: pool)
     monkeypatch.setattr(api, "build_session", fake_build_session)
     monkeypatch.setattr(api._agent, "known_tables", lambda conn: set())
-    # Stub the search service so perimeter tests exercise auth/pool, not the real DB handler.
+    # Stub the service layer so perimeter tests exercise auth/pool, not the real DB/LLM handlers.
     monkeypatch.setattr(api._search, "search_tables",
                         lambda conn, q, domain=None, limit=10: {"results": []})
+    monkeypatch.setattr(api._agent, "generate_sql",
+                        lambda question, session=None, conn=None, attached_tables=None:
+                        Text2SQLResult(sql="SELECT 1"))
     monkeypatch.delenv("BRISA_API_TOKEN", raising=False)
     return {"pool": pool, "session_calls": session_calls}
 
@@ -106,7 +110,7 @@ def test_session_built_once_and_reused(client):
     c, fakes = client
     # Startup built the session eagerly (1). Multiple agent requests must reuse it, not rebuild.
     for _ in range(3):
-        c.post("/api/agent/chat")
+        c.post("/api/agent/chat", json={"question": "x"})
     assert fakes["session_calls"]["n"] == 1
 
 
@@ -123,7 +127,13 @@ def test_session_lazy_build_is_single(fakes, monkeypatch):
         return object()
 
     monkeypatch.setattr(api, "build_session", flaky_build_session)
+    monkeypatch.setattr(api, "build_pool", lambda: FakePool())
+    monkeypatch.setattr(api._agent, "known_tables", lambda conn: set())
+    monkeypatch.setattr(api._agent, "generate_sql",
+                        lambda question, session=None, conn=None, attached_tables=None:
+                        Text2SQLResult(sql="SELECT 1"))
+    monkeypatch.delenv("BRISA_API_TOKEN", raising=False)
     with TestClient(api.create_app()) as c:
         for _ in range(3):
-            c.post("/api/agent/chat")
+            c.post("/api/agent/chat", json={"question": "x"})
     assert state["n"] == 1  # lazy-built exactly once, then reused
