@@ -45,6 +45,9 @@ def fakes(monkeypatch):
     monkeypatch.setattr(api, "build_pool", lambda: pool)
     monkeypatch.setattr(api, "build_session", fake_build_session)
     monkeypatch.setattr(api._agent, "known_tables", lambda conn: set())
+    # Stub the search service so perimeter tests exercise auth/pool, not the real DB handler.
+    monkeypatch.setattr(api._search, "search_tables",
+                        lambda conn, q, domain=None, limit=10: {"results": []})
     monkeypatch.delenv("BRISA_API_TOKEN", raising=False)
     return {"pool": pool, "session_calls": session_calls}
 
@@ -67,9 +70,9 @@ def test_pooled_connection_acquired_and_released(client):
     c, fakes = client
     pool = fakes["pool"]
     before = pool.acquired
-    # Hits the search stub, which resolves get_conn (acquire → yield → release) then 501s.
+    # Resolves get_conn (acquire → yield → release) around the stubbed search handler.
     resp = c.get("/api/search", params={"q": "x"})
-    assert resp.status_code == 501
+    assert resp.status_code == 200
     assert pool.acquired == before + 1
     assert pool.released == pool.acquired  # returned on every path
 
@@ -89,14 +92,14 @@ def test_auth_required_when_token_set(client, monkeypatch):
     assert c.get("/api/search", params={"q": "x"}).status_code == 401
     assert c.get("/api/search", params={"q": "x"},
                  headers={"Authorization": "Bearer nope"}).status_code == 401
-    # Correct bearer passes auth → reaches the stub (501), not 401.
+    # Correct bearer passes auth → reaches the (stubbed) handler → 200, not 401.
     assert c.get("/api/search", params={"q": "x"},
-                 headers={"Authorization": "Bearer s3cret"}).status_code == 501
+                 headers={"Authorization": "Bearer s3cret"}).status_code == 200
 
 
 def test_auth_open_when_token_unset(client):
     c, _ = client  # fixture deletes BRISA_API_TOKEN → gate open (locked-down-host posture)
-    assert c.get("/api/search", params={"q": "x"}).status_code == 501
+    assert c.get("/api/search", params={"q": "x"}).status_code == 200
 
 
 def test_session_built_once_and_reused(client):

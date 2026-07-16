@@ -27,6 +27,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from text2sql import agent as _agent
+from text2sql import search_service as _search
 from text2sql.audit_log import get_logger, new_request
 from text2sql.embedding_service import pg_config
 
@@ -199,9 +200,20 @@ def create_app() -> FastAPI:
     # Surface routers — bodies land in Units 2 (search) and 3 (agent). Auth + pooled conn are
     # wired now so the perimeter is testable and U2/U3 only fill in behavior.
     @app.get("/api/search", dependencies=[Depends(require_auth)])
-    async def search(q: str = "", domain: str | None = None, conn=Depends(get_conn)):
-        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED,
-                            detail="search endpoint lands in Unit 2")
+    async def search(q: str = "", domain: str | None = None, limit: int = 10, conn=Depends(get_conn)):
+        if len(q) > MAX_QUERY_CHARS:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="query too long")
+        return _search.search_tables(conn, q, domain=domain, limit=max(1, min(limit, 50)))
+
+    @app.get("/api/search/columns", dependencies=[Depends(require_auth)])
+    async def search_columns(table: str, conn=Depends(get_conn)):
+        if not table or len(table) > 256:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid table")
+        return {"table": table, "columns": _search.table_columns(conn, table)}
+
+    @app.get("/api/search/domains", dependencies=[Depends(require_auth)])
+    async def search_domains(conn=Depends(get_conn)):
+        return {"domains": _search.list_domains(conn)}
 
     @app.post("/api/agent/chat", dependencies=[Depends(require_auth)])
     async def agent_chat(conn=Depends(get_conn), session=Depends(get_agent_session)):

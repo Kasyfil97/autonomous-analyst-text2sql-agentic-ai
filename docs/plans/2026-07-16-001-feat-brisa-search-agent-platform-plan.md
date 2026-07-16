@@ -325,7 +325,12 @@ Unit 0's findings; Unit 0 informs Units 2/6 card/facet shape only).
 **Verification:** `python -m text2sql.api` serves both routes behind auth; concurrent requests
 reuse one session and distinct pooled connections.
 
-- [ ] **Unit 2: Search endpoint — retrieval + hydration + policy filter**
+- [x] **Unit 2: Search endpoint — retrieval + hydration + policy filter** — DONE
+  (`text2sql/search_service.py`; `GET /api/search`, `/api/search/columns`, `/api/search/domains`;
+  shared `gates.restricted_columns` classifier; `tests/test_search_service.py` +
+  `tests/test_api_search.py`, 12 tests; live smoke returns real cards). Ranks via `hybrid_search`
+  only over `schema_tables`, hydrates cards (humanized headline, domains, n_columns, PII status),
+  denylist-filtered + `redact_note`, scores stripped, lazy column dictionary.
 
 **Goal:** Pure semantic table search returning policy-safe, score-free table cards.
 
