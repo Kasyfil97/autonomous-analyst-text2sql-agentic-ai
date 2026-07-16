@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   agentChat,
   type AgentResponse,
@@ -8,8 +8,23 @@ import {
   type GroundingEntry,
   type GroundingStrength,
 } from "@/lib/api";
+import { ATTACH_DND_TYPE, MAX_ATTACHED } from "@/lib/attach";
 import { SqlBlock } from "@/components/SqlBlock";
-import { useAppState, type ChatTurn } from "@/components/AppState";
+import { useAppState, type AttachAnnouncement, type ChatTurn } from "@/components/AppState";
+
+// Build the polite screen-reader announcement string for an attach outcome. Shared by BOTH the
+// "Kirim ke agent" button and the drag-drop path (they route through the same `lastAttach` signal),
+// so keyboard and pointer users hear identical feedback.
+function announceAttach(a: AttachAnnouncement): string {
+  switch (a.result) {
+    case "added":
+      return `Tabel ${a.table} ditambahkan ke konteks agent.`;
+    case "duplicate":
+      return `Tabel ${a.table} sudah terlampir.`;
+    case "cap":
+      return `Maksimal ${MAX_ATTACHED} tabel. ${a.table} tidak ditambahkan.`;
+  }
+}
 
 const UNVERIFIED_PREFIX = "-- UNVERIFIED DRAFT";
 
@@ -269,14 +284,48 @@ function UserBubble({ turn }: { turn: ChatTurn }) {
 }
 
 export function AgentPane() {
-  const { agent, setAgent } = useAppState();
+  const { agent, setAgent, attachTable, lastAttach } = useAppState();
   const { attached, question, turns, sending } = agent;
   const endRef = useRef<HTMLDivElement | null>(null);
+  const atCap = attached.length >= MAX_ATTACHED;
+
+  // Drop-zone highlight: true while a valid table drag is over the drop region. Decorative only
+  // (no SR requirement) — cleared on drop/leave. A nested-enter counter would be sturdier, but the
+  // single drop region here has no interactive children that steal dragenter, so a boolean is fine.
+  const [dragOver, setDragOver] = useState(false);
+
+  // The polite announcement mirrored into an aria-live region for BOTH attach paths. Re-fires on
+  // every attempt (the `nonce` in lastAttach forces a new string via the key below).
+  const announcement = lastAttach ? announceAttach(lastAttach) : "";
 
   // Keep the newest turn in view.
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [turns, sending]);
+
+  const dropHasTable = (e: React.DragEvent) =>
+    e.dataTransfer.types.includes(ATTACH_DND_TYPE);
+
+  function onDragOver(e: React.DragEvent) {
+    if (!dropHasTable(e)) return;
+    e.preventDefault(); // allow the drop
+    e.dataTransfer.dropEffect = "copy";
+    if (!dragOver) setDragOver(true);
+  }
+
+  function onDragLeave(e: React.DragEvent) {
+    // Only clear when the pointer actually leaves the drop region (not on child-boundary events).
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+    setDragOver(false);
+  }
+
+  function onDrop(e: React.DragEvent) {
+    const table = e.dataTransfer.getData(ATTACH_DND_TYPE);
+    setDragOver(false);
+    if (!table) return;
+    e.preventDefault();
+    attachTable(table); // dedupe + cap + announcement handled centrally
+  }
 
   async function submit(e?: React.FormEvent) {
     e?.preventDefault();
@@ -418,8 +467,39 @@ export function AgentPane() {
         <div ref={endRef} />
       </div>
 
-      {/* Composer */}
-      <form onSubmit={submit} className="mt-4 border-t border-[color:var(--color-line)] pt-4">
+      {/* aria-live: announces attach outcome (success / already-attached / cap) for BOTH the
+          "Kirim ke agent" button and the drag-drop path. Keyed by nonce so identical repeat
+          announcements still fire. Visually hidden — the highlight/chip are the visual channel. */}
+      <div aria-live="polite" className="sr-only">
+        {lastAttach ? <span key={lastAttach.nonce}>{announcement}</span> : null}
+      </div>
+
+      {/* Composer + drop target. Dropping a dragged result card here attaches it to the context. */}
+      <form
+        onSubmit={submit}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+        className={[
+          "mt-4 rounded-xl border-t pt-4 transition-colors",
+          dragOver
+            ? "border border-dashed border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/5"
+            : "border-[color:var(--color-line)]",
+        ].join(" ")}
+      >
+        {/* Drop-zone hint: guides drag; a distinct cap message once 10 are attached. */}
+        <p
+          className={[
+            "mb-2 text-[11px] transition-colors",
+            dragOver
+              ? "font-semibold text-[color:var(--color-accent)]"
+              : "text-[color:var(--color-muted)]",
+          ].join(" ")}
+        >
+          {atCap
+            ? `Maksimal ${MAX_ATTACHED} tabel terlampir.`
+            : "Lepas tabel di sini untuk menambah konteks"}
+        </p>
         {attached.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
             {attached.map((t) => (

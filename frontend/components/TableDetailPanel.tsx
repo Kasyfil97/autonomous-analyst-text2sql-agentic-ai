@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ApiError, tableDetail, type TableDetail } from "@/lib/api";
+import type { AttachResult } from "@/lib/attach";
 
 function DomainBadge({ label }: { label: string }) {
   return (
@@ -41,17 +42,17 @@ export function TableDetailPanel({
 }: {
   id: string;
   onClose: () => void;
-  onAttach: (table: string) => void;
+  onAttach: (table: string) => AttachResult;
 }) {
   const [detail, setDetail] = useState<TableDetail | null>(null);
   const [status, setStatus] = useState<"loading" | "done" | "notfound" | "error">("loading");
-  const [attached, setAttached] = useState(false);
+  const [attachResult, setAttachResult] = useState<AttachResult | null>(null);
 
   useEffect(() => {
     let alive = true;
     setStatus("loading");
     setDetail(null);
-    setAttached(false);
+    setAttachResult(null);
     tableDetail(id)
       .then((d) => {
         if (!alive) return;
@@ -78,9 +79,20 @@ export function TableDetailPanel({
 
   function attach() {
     if (!detail) return;
-    onAttach(detail.card.table_name);
-    setAttached(true);
+    setAttachResult(onAttach(detail.card.table_name));
   }
+
+  // The aria-live announcement is owned centrally by AgentPane (both paths share it), so the
+  // button here only carries a local visual confirmation.
+  const attachLabel =
+    attachResult === "added"
+      ? "Ditambahkan ke agent ✓"
+      : attachResult === "duplicate"
+        ? "Sudah terlampir ✓"
+        : attachResult === "cap"
+          ? "Maksimal 10 tabel"
+          : "Kirim ke agent ↗";
+  const attachAtCap = attachResult === "cap";
 
   return (
     // Overlays the results region only. The scrim is scoped to this region (absolute inset-0).
@@ -160,9 +172,15 @@ export function TableDetailPanel({
                 <button
                   type="button"
                   onClick={attach}
-                  className="mt-4 w-full rounded-lg border border-[color:var(--color-accent)]/30 bg-[color:var(--color-accent)]/5 px-4 py-2 text-sm font-semibold text-[color:var(--color-accent)] transition-colors hover:bg-[color:var(--color-accent)]/10"
+                  aria-disabled={attachAtCap}
+                  className={[
+                    "mt-4 w-full rounded-lg border px-4 py-2 text-sm font-semibold transition-colors",
+                    attachAtCap
+                      ? "border-[color:var(--color-warn-line)] bg-[color:var(--color-warn-bg)] text-[color:var(--color-warn)]"
+                      : "border-[color:var(--color-accent)]/30 bg-[color:var(--color-accent)]/5 text-[color:var(--color-accent)] hover:bg-[color:var(--color-accent)]/10",
+                  ].join(" ")}
                 >
-                  {attached ? "Ditambahkan ke agent ✓" : "Kirim ke agent ↗"}
+                  {attachLabel}
                 </button>
               </header>
 

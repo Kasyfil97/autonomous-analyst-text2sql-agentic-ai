@@ -13,6 +13,7 @@ import {
   type SetStateAction,
 } from "react";
 import type { AgentResponse, SearchResponse } from "@/lib/api";
+import { addAttached, type AttachResult } from "@/lib/attach";
 import {
   STORAGE_KEY,
   deserialize,
@@ -51,12 +52,34 @@ export interface AgentState {
   sending: boolean; // a request is in flight (transient — never persisted)
 }
 
+/**
+ * The outcome of the most recent attach attempt (button or drag), used by AgentPane's
+ * `aria-live` region to announce success / already-attached / cap-reached for BOTH paths.
+ * `nonce` bumps on every attempt so re-announcing the same table+result still fires.
+ */
+export interface AttachAnnouncement {
+  table: string;
+  result: AttachResult;
+  nonce: number;
+}
+
 interface AppStateValue {
   // --- existing consumer API (search/agent page) — preserved verbatim -------
   search: SearchState;
   setSearch: Dispatch<SetStateAction<SearchState>>;
   agent: AgentState;
   setAgent: Dispatch<SetStateAction<AgentState>>;
+
+  // --- attach layer (button + drag-and-drop, U7) ----------------------------
+  /**
+   * Attach a table to the active session's agent context, enforcing dedupe + the cap of 10
+   * (mirrors the backend). Records an announcement for the aria-live region and returns the
+   * result so callers can drive local visual feedback. Single source of truth for both the
+   * "Kirim ke agent" button and the drop target.
+   */
+  attachTable: (table: string) => AttachResult;
+  /** The most recent attach outcome (or null before any attach). */
+  lastAttach: AttachAnnouncement | null;
 
   // --- session layer (consumed by the U4 rail) ------------------------------
   sessions: Session[]; // newest-first, for the rail
@@ -87,6 +110,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<PersistedState>(() => seedState(0));
   const [transient, setTransient] = useState<Record<string, Transient>>({});
   const [hydrated, setHydrated] = useState(false);
+  const [lastAttach, setLastAttach] = useState<AttachAnnouncement | null>(null);
+  const attachNonce = useRef(0);
 
   // Hydrate once, client-only, post-mount.
   useEffect(() => {
@@ -211,6 +236,26 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [patchSessionAgent, state.activeId, state.sessions, transient],
   );
 
+  // --- attach action (button + drag-and-drop) -------------------------------
+  //
+  // Single source of truth for attaching a table to the ACTIVE session's agent context. Enforces
+  // dedupe + the cap of 10 via the pure `addAttached` helper (mirrors the backend), records an
+  // announcement for the aria-live region, and returns the result for local visual feedback.
+  const attachTable = useCallback(
+    (table: string): AttachResult => {
+      const id = state.activeId;
+      const current = state.sessions[id]?.agent.attached ?? [];
+      const { next, result } = addAttached(current, table);
+      if (result === "added") {
+        patchSessionAgent(id, (a) => ({ ...a, attached: next }));
+      }
+      attachNonce.current += 1;
+      setLastAttach({ table, result, nonce: attachNonce.current });
+      return result;
+    },
+    [patchSessionAgent, state.activeId, state.sessions],
+  );
+
   // --- session lifecycle actions --------------------------------------------
 
   const newSession = useCallback(() => {
@@ -252,6 +297,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setSearch,
     agent,
     setAgent,
+    attachTable,
+    lastAttach,
     sessions,
     activeId: state.activeId,
     newSession,

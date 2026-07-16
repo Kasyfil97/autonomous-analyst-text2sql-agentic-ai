@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { listDomains, searchTables } from "@/lib/api";
+import { MAX_ATTACHED } from "@/lib/attach";
 import { TableCard } from "@/components/TableCard";
 import { TableDetailPanel } from "@/components/TableDetailPanel";
 import { useAppState } from "@/components/AppState";
@@ -20,8 +21,9 @@ function Skeletons() {
 }
 
 export function SearchPane() {
-  const { search, setSearch, setAgent } = useAppState();
+  const { search, setSearch, agent, attachTable } = useAppState();
   const { q, domain, res } = search;
+  const atCap = agent.attached.length >= MAX_ATTACHED;
 
   const [domains, setDomains] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -67,8 +69,10 @@ export function SearchPane() {
     run(q, domain);
   }
 
+  // The button + slide-over attach path. Enforces dedupe + the cap of 10 and announces the
+  // outcome via the shared aria-live region (in AgentPane), matching the drag-drop path.
   function askAgent(table: string) {
-    setAgent((s) => (s.attached.includes(table) ? s : { ...s, attached: [...s.attached, table] }));
+    attachTable(table);
   }
 
   const cards = res?.results ?? [];
@@ -150,7 +154,14 @@ export function SearchPane() {
                 : "Tidak ada tabel yang cocok. Coba istilah lain atau bahasa Inggris."}
             </div>
             {res.closest_related?.map((c) => (
-              <TableCard key={c.id} card={c} onOpen={setDetailId} onAsk={askAgent} />
+              <TableCard
+                key={c.id}
+                card={c}
+                onOpen={setDetailId}
+                onAsk={askAgent}
+                onDragStartCard={() => setDetailId(null)}
+                atCap={atCap}
+              />
             ))}
           </div>
         )}
@@ -161,7 +172,14 @@ export function SearchPane() {
               {cards.length} tabel · diurutkan berdasarkan relevansi
             </p>
             {cards.map((c) => (
-              <TableCard key={c.id} card={c} onOpen={setDetailId} onAsk={askAgent} />
+              <TableCard
+                key={c.id}
+                card={c}
+                onOpen={setDetailId}
+                onAsk={askAgent}
+                onDragStartCard={() => setDetailId(null)}
+                atCap={atCap}
+              />
             ))}
           </div>
         )}
@@ -171,7 +189,7 @@ export function SearchPane() {
         <TableDetailPanel
           id={detailId}
           onClose={() => setDetailId(null)}
-          onAttach={askAgent}
+          onAttach={attachTable}
         />
       )}
     </div>
