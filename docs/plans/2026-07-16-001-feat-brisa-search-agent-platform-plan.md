@@ -1,7 +1,7 @@
 ---
 title: "feat: BRISA prototype — Data Search Engine + AI Data Agent platform"
 type: feat
-status: active
+status: completed
 date: 2026-07-16
 origin: docs/brainstorms/2026-07-16-brisa-prototype-search-and-agent-requirements.md
 ---
