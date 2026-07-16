@@ -33,6 +33,11 @@ export interface ColumnInfo {
   pii: boolean;
 }
 
+export interface TableDetail {
+  card: SearchCard;
+  columns: ColumnInfo[];
+}
+
 export interface GroundingEntry {
   name: string;
   in_kb: boolean;
@@ -106,19 +111,30 @@ export async function tableColumns(table: string): Promise<{ table: string; colu
   return handle(await fetch(`${BASE}/api/search/columns?${params}`, { headers: headers() }));
 }
 
+export async function tableDetail(id: string): Promise<TableDetail> {
+  const params = new URLSearchParams({ id });
+  return handle(await fetch(`${BASE}/api/search/table?${params}`, { headers: headers() }));
+}
+
 export async function listDomains(): Promise<{ domains: string[] }> {
   return handle(await fetch(`${BASE}/api/search/domains`, { headers: headers() }));
+}
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
 }
 
 export async function agentChat(
   question: string,
   attached_tables: string[] = [],
+  history: ChatMessage[] = [],
 ): Promise<AgentResponse> {
   return handle(
     await fetch(`${BASE}/api/agent/chat`, {
       method: "POST",
       headers: headers(),
-      body: JSON.stringify({ question, attached_tables }),
+      body: JSON.stringify({ question, attached_tables, history }),
     }),
   );
 }

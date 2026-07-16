@@ -295,10 +295,31 @@ def apply_gates(result: Text2SQLResult, ctx: RetrievalContext, conn, *,
     return result
 
 
-def build_agent(session, ctx: RetrievalContext) -> Agent:
+def _to_messages(history) -> list[dict]:
+    """Convert a ``[{role, content}]`` chat history into Strands ``Message`` shape.
+
+    Only ``user``/``assistant`` roles with non-empty string content survive; each becomes a
+    single text content block. Bounded (last ``_MAX_HISTORY_TURNS`` turns, content clipped) so a
+    long conversation cannot blow the model context — the gates still re-run on every turn.
+    """
+    out: list[dict] = []
+    for h in history or []:
+        role = (h or {}).get("role")
+        content = (h or {}).get("content")
+        if role in ("user", "assistant") and isinstance(content, str) and content.strip():
+            out.append({"role": role, "content": [{"text": content[:_MAX_HISTORY_CHARS]}]})
+    return out[-_MAX_HISTORY_TURNS:]
+
+
+_MAX_HISTORY_TURNS = 30
+_MAX_HISTORY_CHARS = 8000
+
+
+def build_agent(session, ctx: RetrievalContext, history: list[dict] | None = None) -> Agent:
     model = Text2SqlBedrockModel(session, max_tokens=3072, temperature=0.0)
     return Agent(
         model=model,
+        messages=history or None,
         tools=build_tools(ctx),
         system_prompt=SYSTEM_PROMPT,
         conversation_manager=SlidingWindowConversationManager(),
@@ -306,7 +327,7 @@ def build_agent(session, ctx: RetrievalContext) -> Agent:
 
 
 def generate_sql(question: str, *, session=None, conn=None,
-                 attached_tables=None) -> Text2SQLResult:
+                 attached_tables=None, history=None) -> Text2SQLResult:
     """Turn a NL question into a gated draft SQL result (no execution).
 
     ``attached_tables`` (R17a) are table names the analyst attached via the Search→Agent
@@ -314,11 +335,17 @@ def generate_sql(question: str, *, session=None, conn=None,
     so they legitimately enter ``ctx.retrieved_tables`` (grounded), and their DDL is threaded into
     the prompt so the model can actually use them. Denylisted names are skipped. Callers at the
     API boundary re-resolve untrusted names against the catalog first; this is defense-in-depth.
+
+    ``history`` is the prior chat turns (``[{role, content}]``) for multi-turn conversations —
+    seeded into the agent so follow-ups ("change the year to 2024") have context. Each turn is a
+    fresh retrieval + gate pass over a fresh ``RetrievalContext``, so grounding is never inherited
+    from a prior turn; the model must re-retrieve tables it wants to reuse (attached tables the
+    caller carries forward keep it grounded without another lookup).
     """
     rid = new_request()
     t0 = time.perf_counter()
-    _log.info("generate_sql START | request_id=%s  question=%r  attached=%s",
-              rid, question[:120], attached_tables or [])
+    _log.info("generate_sql START | request_id=%s  question=%r  attached=%s  history_turns=%d",
+              rid, question[:120], attached_tables or [], len(history or []))
 
     own_conn = conn is None
     if own_conn:
@@ -326,7 +353,7 @@ def generate_sql(question: str, *, session=None, conn=None,
     try:
         session = session or get_session()
         ctx = RetrievalContext(conn)
-        agent = build_agent(session, ctx)
+        agent = build_agent(session, ctx, _to_messages(history))
 
         prompt = question
         ddl = _seed_attached(ctx, attached_tables)

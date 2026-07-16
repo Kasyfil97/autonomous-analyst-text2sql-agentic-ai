@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { listDomains, searchTables, type SearchResponse } from "@/lib/api";
+import { listDomains, searchTables } from "@/lib/api";
 import { TableCard } from "@/components/TableCard";
+import { useAppState } from "@/components/AppState";
 
 function Skeletons() {
   return (
@@ -20,12 +21,13 @@ function Skeletons() {
 
 export default function SearchPage() {
   const router = useRouter();
-  const [q, setQ] = useState("");
-  const [domain, setDomain] = useState<string | null>(null);
+  const { search, setSearch } = useAppState();
+  const { q, domain, res } = search;
   const [domains, setDomains] = useState<string[]>([]);
-  const [res, setRes] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const setQ = (value: string) => setSearch((s) => ({ ...s, q: value }));
 
   useEffect(() => {
     listDomains()
@@ -38,10 +40,11 @@ export default function SearchPage() {
     setLoading(true);
     setError(null);
     try {
-      setRes(await searchTables(query, dom));
+      const result = await searchTables(query, dom);
+      setSearch((s) => ({ ...s, res: result }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Search failed.");
-      setRes(null);
+      setSearch((s) => ({ ...s, res: null }));
     } finally {
       setLoading(false);
     }
@@ -53,7 +56,7 @@ export default function SearchPage() {
   }
 
   function pickDomain(d: string | null) {
-    setDomain(d);
+    setSearch((s) => ({ ...s, domain: d }));
     if (res) run(q, d); // re-run with the new facet if we already have results
   }
 
@@ -128,8 +131,7 @@ export default function SearchPage() {
               hint="Atau telusuri berdasarkan domain di samping."
               domains={domains}
               onPick={(d) => {
-                setDomain(d);
-                setQ(d);
+                setSearch((s) => ({ ...s, domain: d, q: d }));
                 run(d, d);
               }}
             />

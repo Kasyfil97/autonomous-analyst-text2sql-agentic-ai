@@ -20,6 +20,7 @@ import contextlib
 import os
 import threading
 from contextlib import asynccontextmanager
+from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -38,7 +39,7 @@ from text2sql.embedding_service import pg_config
 
 _log = get_logger("api")
 
-MAX_BODY_BYTES = 64_000
+MAX_BODY_BYTES = 300_000  # holds a bounded multi-turn chat history (see AgentChatRequest caps)
 MAX_QUERY_CHARS = 2_000  # search query-length bound
 
 # Stable error codes so every error path shares one envelope: {"error": {"code", "message"}}.
@@ -148,9 +149,17 @@ def get_agent_session(request: Request):
     return app.state.session
 
 
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(..., max_length=8000)
+
+
 class AgentChatRequest(BaseModel):
     question: str = Field(..., max_length=8000)
     attached_tables: list[str] = Field(default_factory=list, max_length=10)
+    # Prior conversation turns for multi-turn chat. Bounded so a runaway client cannot blow the
+    # body cap or the model context; the backend clips again in agent._to_messages.
+    history: list[ChatMessage] = Field(default_factory=list, max_length=30)
 
 
 def _resolve_attached_tables(names: list[str] | None, conn) -> list[str]:
@@ -273,6 +282,15 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid table")
         return {"table": table, "columns": _search.table_columns(conn, table)}
 
+    @app.get("/api/search/table", dependencies=[Depends(require_auth)])
+    async def search_table(id: str, conn=Depends(get_conn)):
+        if not id or len(id) > 256:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid table id")
+        detail = _search.table_detail(conn, id)
+        if detail is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="table not found")
+        return detail
+
     @app.get("/api/search/domains", dependencies=[Depends(require_auth)])
     async def search_domains(conn=Depends(get_conn)):
         return {"domains": _search.list_domains(conn)}
@@ -285,13 +303,17 @@ def create_app() -> FastAPI:
         question = (req.question or "").strip()
         if not question:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="question is required")
-        # Route first (router_prompt): a question unrelated to bank data ('other') falls back
-        # without drafting SQL. 'sql'/'search' both proceed to the draft-SQL agent.
-        if _orchestrator.route(question, session) == "other":
+        history = [m.model_dump() for m in req.history]
+        # Route only on the opening turn (router_prompt): a first question unrelated to bank data
+        # ('other') falls back without drafting SQL. Once a conversation is under way, follow-ups
+        # ("change the year to 2024") skip the router — routing a bare follow-up in isolation would
+        # misfire — and proceed to the agent with the prior turns for context.
+        if not history and _orchestrator.route(question, session) == "other":
             result = _agent.Text2SQLResult.decline(_orchestrator.FALLBACK_MESSAGE)
         else:
             attached = _resolve_attached_tables(req.attached_tables, conn)
-            result = _agent.generate_sql(question, session=session, conn=conn, attached_tables=attached)
+            result = _agent.generate_sql(question, session=session, conn=conn,
+                                         attached_tables=attached, history=history)
         return _serializers.agent_result_to_payload(result)
 
     return app

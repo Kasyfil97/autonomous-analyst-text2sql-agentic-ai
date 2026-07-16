@@ -97,6 +97,27 @@ def search_tables(conn, query: str, *, domain: str | None = None, limit: int = 1
     return out
 
 
+def table_detail(conn, table_id: str) -> dict | None:
+    """Full detail for a single table, addressed by its schema-qualified id (physical name).
+
+    Returns ``{"card": ..., "columns": [...]}`` or ``None`` when the id is unknown or resolves to
+    a denylisted table (R4a: defense-in-depth, even though the DB role already blocks it).
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, table_name, table_description, domain_tags, column_names, n_columns "
+            "FROM schema_tables WHERE id = %s", (table_id,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        cols = [c.name for c in cur.description]
+        meta = dict(zip(cols, row))
+
+    if (meta.get("table_name") or "").lower() in gates.TABLE_DENYLIST:
+        return None
+    return {"card": _card(meta), "columns": table_columns(conn, meta.get("table_name") or "")}
+
+
 def table_columns(conn, table_name: str) -> list[dict]:
     """Lazy column dictionary for one table (R7), PII-flagged and redacted."""
     with conn.cursor() as cur:
