@@ -18,3 +18,7 @@ __pycache__/
 # OS
 .DS_Store
 Thumbs.db
+
+# Node / Next.js (BRISA frontend)
+node_modules/
+.next/

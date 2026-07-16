@@ -271,7 +271,12 @@ shipped behavior. Verification is the written findings.
 the measured top-5 hit rate + re-scope decision, and the fallback card/facet shape; lists the
 curated tables + demo questions; Units 2/6 reference it.
 
-- [ ] **Unit 1: FastAPI skeleton, lifespan resources, and security middleware**
+- [x] **Unit 1: FastAPI skeleton, lifespan resources, and security middleware** — DONE
+  (`text2sql/api.py`, `tests/test_api_app.py`; 7 tests pass + live-KB smoke). Lifespan builds a
+  read-only `ThreadedConnectionPool` + warms `known_tables`; Bedrock session eager-with-lazy-
+  fallback (search decoupled from Bedrock); locked-down-host auth gate, 64 KB body cap,
+  exact-origin CORS, per-request `new_request()` correlation, generic error envelope. Search/agent
+  routers mounted as auth-guarded 501 stubs for U2/U3.
 
 **Goal:** Stand up the app with shared resources built once and the R25/R26 controls in place.
 
