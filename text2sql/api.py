@@ -22,9 +22,11 @@ import threading
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from text2sql import agent as _agent
@@ -37,6 +39,10 @@ _log = get_logger("api")
 
 MAX_BODY_BYTES = 64_000
 MAX_QUERY_CHARS = 2_000  # search query-length bound
+
+# Stable error codes so every error path shares one envelope: {"error": {"code", "message"}}.
+_HTTP_CODE = {400: "bad_request", 401: "unauthorized", 403: "forbidden",
+              404: "not_found", 413: "body_too_large", 501: "not_implemented"}
 
 
 def _frontend_origin() -> str:
@@ -119,8 +125,16 @@ def get_conn(request: Request):
     try:
         yield conn
     finally:
-        with contextlib.suppress(Exception):
+        # psycopg2's pool does not reset connections — roll back any aborted/open transaction so a
+        # failed query does not corrupt the next borrower. Log (not silently swallow) return errors.
+        try:
+            conn.rollback()
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("get_conn | rollback before putconn failed: %s", exc)
+        try:
             pool.putconn(conn)
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("get_conn | putconn failed: %s", exc)
 
 
 def get_agent_session(request: Request):
@@ -138,7 +152,7 @@ class AgentChatRequest(BaseModel):
     attached_tables: list[str] = Field(default_factory=list, max_length=10)
 
 
-def _resolve_attached_tables(names, conn) -> list[str]:
+def _resolve_attached_tables(names: list[str] | None, conn) -> list[str]:
     """Re-resolve untrusted attached table names against the catalog + denylist (R17a).
 
     Returns canonical catalog-cased names; anything that does not resolve to a known,
@@ -148,7 +162,7 @@ def _resolve_attached_tables(names, conn) -> list[str]:
         return []
     from text2sql import gates
 
-    by_lower = {t.lower(): t for t in _agent.known_tables(conn)}
+    by_lower = _agent.known_tables_by_lower(conn)
     out: list[str] = []
     for n in names:
         if not isinstance(n, str) or not n.strip() or len(n) > 128:
@@ -222,6 +236,22 @@ def create_app() -> FastAPI:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"error": {"code": "internal_error",
                                "message": "an internal error occurred; see server logs"}},
+        )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def _http_exc(request: Request, exc: StarletteHTTPException):  # noqa: ANN001
+        # Normalize HTTPException (401/400/501/...) into the same envelope the middleware uses.
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"error": {"code": _HTTP_CODE.get(exc.status_code, f"http_{exc.status_code}"),
+                               "message": exc.detail}},
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def _validation_exc(request: Request, exc: RequestValidationError):  # noqa: ANN001
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content={"error": {"code": "invalid_request", "message": "request validation failed"}},
         )
 
     @app.get("/healthz")

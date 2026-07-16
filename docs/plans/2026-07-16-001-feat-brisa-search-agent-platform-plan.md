@@ -177,6 +177,12 @@ Success criteria (from origin):
   building Units 1/5.
 - shadcn retheme tokens (type scale, radius, palette) — resolved at build time via
   `frontend-design`.
+- **[Post-review hardening — production, deferred for the demo]** From the ce:review pass
+  (`.context/compound-engineering/ce-review/brisa-backend-u0-u4/findings.md`): add a Bedrock
+  invoke timeout + size the RO pool ≥ threadpool (a slow Bedrock call can otherwise exhaust the
+  pool); add bounded retry / prominent startup logging for the lazy Bedrock-session build; add an
+  embedding-service circuit-breaker/retry budget (pre-existing `embedding_service.py`). Consistent
+  with the locked-down-demo posture that defers load hardening.
 
 ## High-Level Technical Design
 

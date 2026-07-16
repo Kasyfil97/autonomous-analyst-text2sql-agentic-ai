@@ -77,6 +77,35 @@ def known_tables(conn) -> set:
     return _known_tables_cache
 
 
+def known_tables_by_lower(conn) -> dict:
+    """Map lowercased table name -> canonical catalog casing.
+
+    Single source for canonical-name resolution, shared by ``apply_gates`` (grounding chips) and
+    the API's attached-table resolver, so the lookup semantics stay in one place.
+    """
+    return {t.lower(): t for t in known_tables(conn)}
+
+
+def _seed_attached(ctx: RetrievalContext, attached_tables) -> str:
+    """Pre-fetch attached tables through the real retrieval path so they are grounded (R17a).
+
+    Returns their concatenated DDL for the prompt. Denylisted names are skipped. The table is
+    added to ``ctx.retrieved_tables`` explicitly because ``table_schema_text`` early-returns
+    without seeding when a table has no column dictionary — the attached table (already
+    catalog-validated by the caller) must still count as retrieved.
+    """
+    blocks = []
+    for name in attached_tables or []:
+        if (name or "").lower() in gates.TABLE_DENYLIST:
+            _log.warning("generate_sql | skipping denylisted attached table %r", name)
+            continue
+        blocks.append(table_schema_text(ctx, name))
+        ctx.retrieved_tables.add((name or "").lower())
+    if blocks:
+        _log.info("generate_sql | attached %d table(s) pre-seeded into retrieval context", len(blocks))
+    return "\n\n".join(blocks)
+
+
 def _extract_json(text: str) -> dict | None:
     """Tolerantly extract the first JSON object from the model's final text."""
     text = _bs._strip_reasoning(text or "")
@@ -214,7 +243,7 @@ def apply_gates(result: Text2SQLResult, ctx: RetrievalContext, conn, *,
     # case-insensitive (retrieved_tables/known_tables use catalog case, the model writes its own),
     # matching the accumulator above; the displayed name is pinned to the catalog casing so a table
     # looks identical on a search card and an agent chip.
-    known_by_lower = {t.lower(): t for t in known_tables(conn)}
+    known_by_lower = known_tables_by_lower(conn)
     era_c = ctx.era_top_cosine()
     schema_c = ctx.schema_top_cosine()
     result.grounding = [
@@ -289,19 +318,10 @@ def generate_sql(question: str, *, session=None, conn=None,
         agent = build_agent(session, ctx)
 
         prompt = question
-        if attached_tables:
-            blocks = []
-            for name in attached_tables:
-                if (name or "").lower() in gates.TABLE_DENYLIST:
-                    _log.warning("generate_sql | skipping denylisted attached table %r", name)
-                    continue
-                blocks.append(table_schema_text(ctx, name))  # seeds ctx.retrieved_tables (grounding)
-            if blocks:
-                ddl = "\n\n".join(blocks)
-                prompt = (f"{question}\n\n-- The analyst attached these table(s) for context; "
-                          f"prefer them when relevant:\n{ddl}")
-                _log.info("generate_sql | attached %d table(s) pre-seeded into retrieval context",
-                          len(blocks))
+        ddl = _seed_attached(ctx, attached_tables)
+        if ddl:
+            prompt = (f"{question}\n\n-- The analyst attached these table(s) for context; "
+                      f"prefer them when relevant:\n{ddl}")
 
         _log.info("agent_loop START | model=gpt-oss-120b  tools=search_era_knowledge,search_schema,get_table_schema")
         raw = str(agent(prompt))

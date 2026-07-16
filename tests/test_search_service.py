@@ -69,3 +69,16 @@ def test_table_columns_shape_and_pii_flag(conn):
 def test_list_domains(conn):
     doms = S.list_domains(conn)
     assert "kartu" in doms and "pinjaman" in doms
+
+
+def test_card_redacts_pii_in_description():
+    """R4a: free-text on the search path is redacted before serialization (no DB needed)."""
+    meta = {
+        "id": "datalake.t", "table_name": "t",
+        "table_description": "contact admin@bri.co.id or 0812-3456-7890 for access",
+        "domain_tags": ["x"], "column_names": ["id"], "n_columns": 1,
+    }
+    card = S._card(meta)
+    assert "admin@bri.co.id" not in card["description"]
+    assert "0812-3456-7890" not in card["description"]
+    assert "[EMAIL]" in card["description"] or "[PHONE]" in card["description"]

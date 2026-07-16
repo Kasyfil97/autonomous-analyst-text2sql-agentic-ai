@@ -54,7 +54,7 @@ RESTRICTED_FRAGMENTS = {
     "rekening", "no_rek", "norek", "account_no", "acct_no",
 }
 
-def restricted_fragment(name) -> str | None:
+def restricted_fragment(name: str | None) -> str | None:
     """Return the first PII/PCI fragment a column name matches, else None.
 
     Single source for the fragment heuristic — consumed by ``policy_ok`` (agent path) and the

@@ -57,3 +57,18 @@ def test_table_schema_text_seeds_retrieved(conn):
     assert seeded_ctx is not None, "expected some known table to have columns and seed retrieval"
     name, ctx = seeded_ctx
     assert name.lower() in ctx.retrieved_tables  # grounded via the real retrieval path (R17a)
+
+
+def test_seed_attached_grounds_even_without_column_dictionary(monkeypatch):
+    """R17a: an attached table with no column dictionary must still be grounded (regression)."""
+    from text2sql import agent as A
+    from text2sql.tools import RetrievalContext
+
+    # Simulate table_schema_text early-returning without seeding (the no-columns path).
+    monkeypatch.setattr(A, "table_schema_text",
+                        lambda ctx, name: f"No column dictionary found for '{name}'.")
+    ctx = RetrievalContext(object())
+    ddl = A._seed_attached(ctx, ["Foo", "era_tickets", "Bar"])
+    assert "foo" in ctx.retrieved_tables and "bar" in ctx.retrieved_tables  # grounded despite no columns
+    assert "era_tickets" not in ctx.retrieved_tables                        # denylisted skipped
+    assert ddl  # DDL blocks returned for the non-denylisted names

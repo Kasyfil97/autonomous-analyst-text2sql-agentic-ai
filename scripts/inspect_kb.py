@@ -32,6 +32,7 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 import psycopg2  # noqa: E402
+from psycopg2 import sql  # noqa: E402
 
 from text2sql import gates  # noqa: E402
 from text2sql.embedding_service import pg_config  # noqa: E402
@@ -124,7 +125,7 @@ def check_denylist_reachability(cur) -> dict:
     out: dict = {}
     for tbl in sorted(gates.TABLE_DENYLIST):
         try:
-            cur.execute(f"SELECT 1 FROM {tbl} LIMIT 1")
+            cur.execute(sql.SQL("SELECT 1 FROM {} LIMIT 1").format(sql.Identifier(tbl)))
             cur.fetchone()
             out[tbl] = "READABLE (application-level denylist is the only barrier)"
         except psycopg2.Error as exc:

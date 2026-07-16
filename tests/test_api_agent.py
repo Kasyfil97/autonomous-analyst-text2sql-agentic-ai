@@ -59,9 +59,18 @@ def test_agent_contract_exposes_grounding(client):
     assert cap["question"] == "total per bulan"
 
 
-def test_question_required(client):
+def test_question_required_uses_error_envelope(client):
     c, _ = client
-    assert c.post("/api/agent/chat", json={"question": "   "}).status_code == 400
+    r = c.post("/api/agent/chat", json={"question": "   "})
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "bad_request"  # uniform envelope (not FastAPI's {detail})
+
+
+def test_request_validation_uses_error_envelope(client):
+    c, _ = client
+    r = c.post("/api/agent/chat", json={})  # missing required 'question'
+    assert r.status_code == 422
+    assert r.json()["error"]["code"] == "invalid_request"
 
 
 def test_decline_is_returned_in_band(client, monkeypatch):
@@ -95,3 +104,40 @@ def test_attached_tables_resolved_before_generate(client):
                   json={"question": "x", "attached_tables": ["sales", "ghost", "era_tickets"]})
     assert resp.status_code == 200
     assert cap["attached"] == ["SALES"]
+
+
+class _CountingConn:
+    def rollback(self):
+        pass
+
+
+class _CountingPool:
+    def __init__(self):
+        self.acquired = 0
+        self.released = 0
+
+    def getconn(self):
+        self.acquired += 1
+        return _CountingConn()
+
+    def putconn(self, conn):
+        self.released += 1
+
+    def closeall(self):
+        pass
+
+
+def test_pool_connection_returned_when_generate_raises(monkeypatch):
+    pool = _CountingPool()
+    monkeypatch.setattr(api, "build_pool", lambda: pool)
+    monkeypatch.setattr(api, "build_session", lambda: object())
+    monkeypatch.setattr(api._agent, "known_tables", lambda conn: set())
+    monkeypatch.setattr(api._agent, "generate_sql",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.delenv("BRISA_API_TOKEN", raising=False)
+    with TestClient(api.create_app(), raise_server_exceptions=False) as c:
+        before = pool.acquired
+        resp = c.post("/api/agent/chat", json={"question": "x"})
+        assert resp.status_code == 500
+        assert pool.acquired == before + 1
+        assert pool.released == pool.acquired  # connection returned to the pool despite the error

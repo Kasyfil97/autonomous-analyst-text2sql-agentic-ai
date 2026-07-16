@@ -40,7 +40,7 @@ def _hydrate(conn, ids: list[str]) -> dict[str, dict]:
         return {r[0]: dict(zip(cols, r)) for r in cur.fetchall()}
 
 
-def _pii_status(column_names) -> str:
+def _pii_status(column_names: list[str] | None) -> str:
     """R5a: 'present' when a name hits the PII heuristic, else 'unclassified' — never 'safe'."""
     return "present" if gates.restricted_columns(column_names or []) else "unclassified"
 
