@@ -43,14 +43,14 @@ export function SqlBlock({ sql }: { sql: string }) {
           value={value}
           onChange={(e) => setValue(e.target.value)}
           spellCheck={false}
-          className="block h-56 w-full resize-y bg-[color:var(--color-code)] p-4 font-mono text-[13px] leading-relaxed text-[#e8f1fb] outline-none"
+          className="block h-56 w-full resize-y bg-[color:var(--color-code)] p-4 font-mono text-[13px] leading-relaxed text-[color:var(--color-code-text)] outline-none"
         />
       ) : (
         <pre className="overflow-x-auto bg-[color:var(--color-code)] p-4">
-          <code className="font-mono text-[13px] leading-relaxed text-[#e8f1fb]">{value}</code>
+          <code className="font-mono text-[13px] leading-relaxed text-[color:var(--color-code-text)]">{value}</code>
         </pre>
       )}
-      <p className="bg-[color:var(--color-code)] px-4 pb-3 text-[11px] text-[#7d93ad]">
+      <p className="bg-[color:var(--color-code)] px-4 pb-3 text-[11px] text-[color:var(--color-code-muted)]">
         Copy into your SQL editor to run. This assistant drafts SQL only — it cannot access, run,
         or return data.
       </p>

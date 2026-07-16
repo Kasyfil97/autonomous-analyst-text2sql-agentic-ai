@@ -1,26 +1,28 @@
 @import "tailwindcss";
 
-/* BRISA design tokens — calm institutional data console.
-   Neutral slate surface + a single teal trust accent; amber is reserved for the unverified-draft
-   state so it can never be confused with a validated query (avoid green as a hero color). */
+/* Sage design tokens — warm, calm data console (adopted from the Sage design).
+   Warm cream surface + a single terracotta accent; amber is reserved for the unverified-draft
+   state so it can never be confused with a validated query. Blue is links only. */
 @theme {
-  --color-bg: #f5f7f9;
-  --color-panel: #ffffff;
-  --color-panel-2: #eef2f6;
-  --color-ink: #0f1b2d;
-  --color-muted: #5b6b7f;
-  --color-line: #dde4ec;
-  --color-accent: #0f766e;      /* teal — trust */
-  --color-accent-2: #1d4ed8;    /* blue — links */
+  --color-bg: #eae6d9;          /* warm cream canvas */
+  --color-panel: #fffdf8;       /* card surface */
+  --color-panel-2: #f2eee2;     /* secondary surface / chips / skeletons */
+  --color-ink: #24211b;         /* primary text */
+  --color-muted: #5c5647;       /* muted text (taupe) */
+  --color-line: #e0d9c6;        /* borders / dividers */
+  --color-accent: #c96442;      /* terracotta — trust/primary */
+  --color-accent-2: #2f5ae0;    /* blue — links */
   --color-warn: #92500a;        /* amber ink — unverified draft */
-  --color-warn-bg: #fff7ed;
-  --color-warn-line: #f4c67c;
+  --color-warn-bg: #fbefd9;
+  --color-warn-line: #e4b77a;
   --color-danger: #b42318;
-  --color-ok: #15803d;
-  --color-code: #0c1626;
+  --color-ok: #4f8a55;
+  --color-code: #2e2c26;        /* warm-dark code surface */
+  --color-code-text: #f0eee6;   /* code text on the dark surface */
+  --color-code-muted: #a79e86;  /* code caption / secondary */
 
-  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-plex-mono), ui-monospace, "Cascadia Code", Consolas, monospace;
+  --font-sans: var(--font-instrument-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, "JetBrains Mono", Consolas, monospace;
 }
 
 html,
@@ -30,7 +32,7 @@ body {
 
 body {
   background:
-    radial-gradient(circle at top left, rgba(15, 118, 110, 0.08), transparent 32rem),
+    radial-gradient(circle at top left, rgba(201, 100, 66, 0.08), transparent 32rem),
     var(--color-bg);
   color: var(--color-ink);
   font-family: var(--font-sans);
