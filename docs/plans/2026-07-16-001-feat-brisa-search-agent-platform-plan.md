@@ -509,7 +509,9 @@ table is rejected and never grounded.
 **Verification:** Attaching a table makes it grounded only via the real retrieval path;
 crafted/denylisted names cannot bypass the gate.
 
-- [ ] **Unit 5: Frontend shell & design system**
+- [x] **Unit 5: Frontend shell & design system** — DONE (`frontend/`: Next 16 + Tailwind v4,
+  IBM Plex Sans/Mono, teal-accent theme with amber draft state, sidebar shell, desktop-min notice,
+  typed `lib/api.ts` client). Build passes.
 
 **Goal:** Next.js app shell, sidebar nav, shared API client, and the rethemed design system.
 
@@ -545,7 +547,10 @@ has a non-color cue). No unit suite for pure scaffolding.
 **Verification:** App shell renders with themed sidebar; tokens applied; below-min message shows;
 API client reaches both endpoints.
 
-- [ ] **Unit 6: Search surface UI**
+- [x] **Unit 6: Search surface UI** — DONE (`app/search`, `components/TableCard`): NL search bar,
+  ranked score-free cards (headline + mono physical name + domain/PII badges), lazy column
+  dictionary, left-rail domain facet + filter chip, skeleton loading, empty/zero + closest-related
+  states, "Tanya agent" cross-link to `/agent?table=`.
 
 **Goal:** The "Google for BRI data" surface — search bar, cards, columns, facet, states,
 cross-link.
@@ -583,7 +588,13 @@ cross-link.
 **Verification:** Analyst can search, filter by domain, inspect columns, and hand a table to the
 Agent; visual pass against the search-UX guidance.
 
-- [ ] **Unit 7: Agent surface UI**
+- [x] **Unit 7: Agent surface UI** — DONE (`app/agent`, `components/SqlBlock`): full-width
+  structured regions (interpretation → assumptions → source tables → warnings → SQL), read-only SQL
+  block with on-block UNVERIFIED badge + Copy/Edit and **no Run**, grounding chips from the R13a
+  payload (grounded vs named-but-not-retrieved; none for not-in-KB), grounding-strength label
+  (never numeric), removable context chip from the Search cross-link, generating/decline/error
+  states. Verification: production build + static prerender pass; browser screenshot verification
+  not run (no browser tooling in env) — litmus mental review applied.
 
 **Goal:** The draft-SQL chat surface with trust artifacts and non-happy-path states.
 

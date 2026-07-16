@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+/* BRISA design tokens — calm institutional data console.
+   Neutral slate surface + a single teal trust accent; amber is reserved for the unverified-draft
+   state so it can never be confused with a validated query (avoid green as a hero color). */
+@theme {
+  --color-bg: #f5f7f9;
+  --color-panel: #ffffff;
+  --color-panel-2: #eef2f6;
+  --color-ink: #0f1b2d;
+  --color-muted: #5b6b7f;
+  --color-line: #dde4ec;
+  --color-accent: #0f766e;      /* teal — trust */
+  --color-accent-2: #1d4ed8;    /* blue — links */
+  --color-warn: #92500a;        /* amber ink — unverified draft */
+  --color-warn-bg: #fff7ed;
+  --color-warn-line: #f4c67c;
+  --color-danger: #b42318;
+  --color-ok: #15803d;
+  --color-code: #0c1626;
+
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(circle at top left, rgba(15, 118, 110, 0.08), transparent 32rem),
+    var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "tnum" 1; /* tabular figures throughout */
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Desktop-only prototype (R28): show a below-min notice under 900px, hide the app. */
+.below-min {
+  display: none;
+}
+@media (max-width: 900px) {
+  .app-shell {
+    display: none;
+  }
+  .below-min {
+    display: grid;
+    place-items: center;
+    min-height: 100vh;
+    padding: 2rem;
+    text-align: center;
+    color: var(--color-muted);
+  }
+}
