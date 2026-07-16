@@ -23,7 +23,7 @@ def client(monkeypatch):
     monkeypatch.setattr(api, "build_pool", lambda: FakePool())
     monkeypatch.setattr(api, "build_session", lambda: object())
     monkeypatch.setattr(api._agent, "known_tables", lambda conn: set())
-    monkeypatch.delenv("BRISA_API_TOKEN", raising=False)
+    monkeypatch.delenv("SAGE_API_TOKEN", raising=False)
 
     captured: dict = {}
 

@@ -1,4 +1,4 @@
-"""Serialize agent results into BRISA API JSON (plan Unit 3).
+"""Serialize agent results into Sage API JSON (plan Unit 3).
 
 Ports and extends ``web.result_to_payload`` for the agent surface, surfacing the additive R13a
 grounding/coverage fields as structured data so the frontend never string-parses warnings.

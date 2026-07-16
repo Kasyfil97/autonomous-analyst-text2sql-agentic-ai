@@ -58,7 +58,7 @@ def restricted_fragment(name: str | None) -> str | None:
     """Return the first PII/PCI fragment a column name matches, else None.
 
     Single source for the fragment heuristic — consumed by ``policy_ok`` (agent path) and the
-    BRISA search-surface PII badge (R4a/R5a), so the two read paths cannot drift.
+    Sage search-surface PII badge (R4a/R5a), so the two read paths cannot drift.
     """
     low = (name or "").lower()
     return next((frag for frag in RESTRICTED_FRAGMENTS if frag in low), None)

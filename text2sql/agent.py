@@ -49,8 +49,8 @@ class Text2SQLResult(BaseModel):
     declined: bool = False
     missing: str | None = None
     warnings: list[str] = Field(default_factory=list)  # severity-tagged gate findings
-    # BRISA (R13a): additive grounding/coverage signals for the UI. Default-empty so existing
-    # consumers (CLI, web.py) are unaffected; populated by apply_gates.
+    # Sage (R13a): additive grounding/coverage signals for the UI. Default-empty so existing
+    # consumers (CLI) are unaffected; populated by apply_gates.
     grounding: list[dict] = Field(default_factory=list)   # [{name, in_kb, retrieved}]
     era_top_cosine: float | None = None
     schema_top_cosine: float | None = None
@@ -250,7 +250,7 @@ def apply_gates(result: Text2SQLResult, ctx: RetrievalContext, conn, *,
             len(decision.referenced_tables),
         )
 
-    # R13a: per-table grounding status + coverage signals for the BRISA UI. Comparisons are
+    # R13a: per-table grounding status + coverage signals for the Sage UI. Comparisons are
     # case-insensitive (retrieved_tables/known_tables use catalog case, the model writes its own),
     # matching the accumulator above; the displayed name is pinned to the catalog casing so a table
     # looks identical on a search card and an agent chip.

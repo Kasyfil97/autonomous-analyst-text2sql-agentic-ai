@@ -1,6 +1,9 @@
-// Typed client for the BRISA FastAPI backend. All calls are client-side (SPA), matching the
+// Typed client for the Sage FastAPI backend. All calls are client-side (SPA), matching the
 // locked-down-demo posture: an optional shared bearer token from NEXT_PUBLIC_API_TOKEN.
 
+// NEXT_PUBLIC_API_TOKEN / NEXT_PUBLIC_API_BASE names are intentionally kept as-is. They must
+// stay in lockstep with the backend: NEXT_PUBLIC_API_TOKEN has to match the server's
+// SAGE_API_TOKEN (else auth silently opens or rejects), and the base must target the Sage API.
 const BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
 const TOKEN = process.env.NEXT_PUBLIC_API_TOKEN;
 

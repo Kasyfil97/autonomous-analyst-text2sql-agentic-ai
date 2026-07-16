@@ -24,7 +24,7 @@ def client(monkeypatch):
     monkeypatch.setattr(api, "build_pool", lambda: FakePool())
     monkeypatch.setattr(api, "build_session", lambda: object())
     monkeypatch.setattr(api._agent, "known_tables", lambda conn: {"SALES"})
-    monkeypatch.delenv("BRISA_API_TOKEN", raising=False)
+    monkeypatch.delenv("SAGE_API_TOKEN", raising=False)
 
     captured: dict = {}
 
@@ -147,7 +147,7 @@ def test_pool_connection_returned_when_generate_raises(monkeypatch):
     monkeypatch.setattr(api._agent, "known_tables", lambda conn: set())
     monkeypatch.setattr(api._agent, "generate_sql",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
-    monkeypatch.delenv("BRISA_API_TOKEN", raising=False)
+    monkeypatch.delenv("SAGE_API_TOKEN", raising=False)
     with TestClient(api.create_app(), raise_server_exceptions=False) as c:
         before = pool.acquired
         resp = c.post("/api/agent/chat", json={"question": "x"})

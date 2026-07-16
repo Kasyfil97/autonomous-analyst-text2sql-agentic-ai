@@ -1,4 +1,4 @@
-"""BRISA Data Search Engine (plan Unit 2) — pure semantic table search, no LLM.
+"""Sage Data Search Engine (plan Unit 2) — pure semantic table search, no LLM.
 
 Ranks with ``retrieval.hybrid_search`` over ``schema_tables`` only, hydrates the ranked ids
 into policy-safe table cards, and lazy-loads a column dictionary on demand. All policy controls

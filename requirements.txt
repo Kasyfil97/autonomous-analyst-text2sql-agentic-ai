@@ -11,7 +11,7 @@ strands-agents-tools>=0.1
 psycopg2-binary>=2.9
 sqlglot>=25.0
 
-# Web API (BRISA platform)
+# Web API (Sage platform)
 fastapi>=0.115
 uvicorn[standard]>=0.30
 

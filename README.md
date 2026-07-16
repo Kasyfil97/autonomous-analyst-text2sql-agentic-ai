@@ -52,16 +52,22 @@ precedent ticket id(s), and dialect — or a KB answer in prose — depending on
 Set `T2S_DEBUG=1` for verbose auth output. Set `T2S_AUDIT_LEVEL=DEBUG` for gate/retrieval
 internals.
 
-### Web chat UI
+### Sage web API
 
 ```bash
-python -m text2sql.web
-python -m text2sql.web --host 0.0.0.0 --port 9000   # optional bind overrides
+python -m text2sql.api
+python -m text2sql.api --host 0.0.0.0 --port 9000   # optional bind overrides
 ```
 
-Open `http://127.0.0.1:8000` in a browser. The UI provides a modern chat interface over
-the orchestrator, supporting both SQL drafts and KB search answers. It displays warnings,
-assumptions, source tables, and ERA precedent IDs. The web server does not execute SQL.
+Serves the Sage FastAPI backend (semantic table search + draft-SQL agent) that the
+frontend console talks to. It displays warnings, assumptions, source tables, and ERA
+precedent IDs, and never executes SQL.
+
+Optional env: `SAGE_API_TOKEN` (shared bearer token; unset = open gate on the
+network-restricted host) and `SAGE_FRONTEND_ORIGIN` (exact CORS origin, default
+`http://localhost:3000`). Both keep a one-release dual-read fallback to the legacy
+`BRISA_API_TOKEN` / `BRISA_FRONTEND_ORIGIN` names. The frontend's
+`NEXT_PUBLIC_API_TOKEN` must match `SAGE_API_TOKEN`.
 
 ## Tests
 

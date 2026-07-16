@@ -1,4 +1,4 @@
-"""BRISA FastAPI backend (plan Unit 1).
+"""Sage FastAPI backend (plan Unit 1).
 
 Wraps the existing ``text2sql`` package behind two surfaces — a semantic table-search engine
 and the draft-SQL agent — with shared resources built once at startup. Generated SQL is never
@@ -10,8 +10,10 @@ API routes (network restriction is the primary control), an exact-single-origin 
 deferred (documented in the plan's Risks); full-catalog schema visibility is an accepted,
 documented demo risk — not a production posture.
 
-Run:  ``python -m text2sql.api``  (env: ``BRISA_API_TOKEN`` optional shared token,
-``BRISA_FRONTEND_ORIGIN`` CORS origin, plus the usual ``PG_RO_*`` / Bedrock / embedding vars).
+Run:  ``python -m text2sql.api``  (env: ``SAGE_API_TOKEN`` optional shared token,
+``SAGE_FRONTEND_ORIGIN`` CORS origin, plus the usual ``PG_RO_*`` / Bedrock / embedding vars).
+Both env vars keep a one-release dual-read alias — the legacy ``BRISA_*`` names are still read
+as a fallback if the ``SAGE_*`` name is unset.
 """
 from __future__ import annotations
 
@@ -48,7 +50,10 @@ _HTTP_CODE = {400: "bad_request", 401: "unauthorized", 403: "forbidden",
 
 
 def _frontend_origin() -> str:
-    return os.getenv("BRISA_FRONTEND_ORIGIN", "http://localhost:3000")
+    # Dual-read alias (one release): prefer SAGE_, fall back to the legacy BRISA_ name so a
+    # stale .env still works. Same default as before.
+    return os.getenv("SAGE_FRONTEND_ORIGIN") or os.getenv(
+        "BRISA_FRONTEND_ORIGIN", "http://localhost:3000")
 
 
 # --------------------------------------------------------------------------
@@ -108,11 +113,12 @@ async def lifespan(app: FastAPI):
 def require_auth(request: Request) -> None:
     """Simple shared-token gate (locked-down-host posture).
 
-    Token is read from ``BRISA_API_TOKEN`` at call time (so tests can set/unset it). When the
-    token is unset the gate is open (the network-restricted host is the control); when set, a
-    matching ``Authorization: Bearer <token>`` is required — fail-closed on mismatch.
+    Token is read from ``SAGE_API_TOKEN`` at call time (so tests can set/unset it), with a
+    one-release dual-read fallback to the legacy ``BRISA_API_TOKEN``. When the token is unset the
+    gate is open (the network-restricted host is the control); when set, a matching
+    ``Authorization: Bearer <token>`` is required — fail-closed on mismatch.
     """
-    token = os.getenv("BRISA_API_TOKEN")
+    token = os.getenv("SAGE_API_TOKEN") or os.getenv("BRISA_API_TOKEN")
     if not token:
         return
     header = request.headers.get("Authorization", "")
@@ -225,7 +231,7 @@ class CorrelationMiddleware(BaseHTTPMiddleware):
 # --------------------------------------------------------------------------
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="BRISA", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Sage", version="0.1.0", lifespan=lifespan)
 
     app.add_middleware(CorrelationMiddleware)
     app.add_middleware(BodySizeLimitMiddleware)
@@ -323,7 +329,7 @@ app = create_app()
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the BRISA FastAPI backend.")
+    parser = argparse.ArgumentParser(description="Run the Sage FastAPI backend.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", default=8000, type=int)
     args = parser.parse_args()

@@ -1,4 +1,4 @@
-"""Unit 0 (BRISA plan) — one-off, read-only live-KB inspection.
+"""Unit 0 (Sage plan) — one-off, read-only live-KB inspection.
 
 Measures the metadata reality that gates the search-surface card/facet shape and the
 demo-dataset curation (plan Unit 0):
@@ -181,7 +181,7 @@ def kpi_top5(conn, questions_path: str) -> dict:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="BRISA Unit 0 — read-only KB inspection.")
+    ap = argparse.ArgumentParser(description="Sage Unit 0 — read-only KB inspection.")
     ap.add_argument("--questions", help="Optional curated-questions file for the top-5 KPI check.")
     args = ap.parse_args()
 

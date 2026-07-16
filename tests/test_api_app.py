@@ -1,4 +1,4 @@
-"""Unit-tier tests for the BRISA FastAPI skeleton (plan Unit 1).
+"""Unit-tier tests for the Sage FastAPI skeleton (plan Unit 1).
 
 No live DB or Bedrock: the pool and session builders are monkeypatched to fakes, and
 ``known_tables`` (called during lifespan cache-warming) is stubbed. Mirrors the injected-fake
@@ -52,7 +52,7 @@ def fakes(monkeypatch):
     monkeypatch.setattr(api._agent, "generate_sql",
                         lambda question, session=None, conn=None, attached_tables=None:
                         Text2SQLResult(sql="SELECT 1"))
-    monkeypatch.delenv("BRISA_API_TOKEN", raising=False)
+    monkeypatch.delenv("SAGE_API_TOKEN", raising=False)
     return {"pool": pool, "session_calls": session_calls}
 
 
@@ -91,7 +91,7 @@ def test_body_over_cap_rejected_before_routing(client):
 
 def test_auth_required_when_token_set(client, monkeypatch):
     c, _ = client
-    monkeypatch.setenv("BRISA_API_TOKEN", "s3cret")
+    monkeypatch.setenv("SAGE_API_TOKEN", "s3cret")
     # No / wrong bearer → 401 before the handler runs.
     assert c.get("/api/search", params={"q": "x"}).status_code == 401
     assert c.get("/api/search", params={"q": "x"},
@@ -102,7 +102,7 @@ def test_auth_required_when_token_set(client, monkeypatch):
 
 
 def test_auth_open_when_token_unset(client):
-    c, _ = client  # fixture deletes BRISA_API_TOKEN → gate open (locked-down-host posture)
+    c, _ = client  # fixture deletes SAGE_API_TOKEN → gate open (locked-down-host posture)
     assert c.get("/api/search", params={"q": "x"}).status_code == 200
 
 
@@ -132,7 +132,7 @@ def test_session_lazy_build_is_single(fakes, monkeypatch):
     monkeypatch.setattr(api._agent, "generate_sql",
                         lambda question, session=None, conn=None, attached_tables=None:
                         Text2SQLResult(sql="SELECT 1"))
-    monkeypatch.delenv("BRISA_API_TOKEN", raising=False)
+    monkeypatch.delenv("SAGE_API_TOKEN", raising=False)
     with TestClient(api.create_app()) as c:
         for _ in range(3):
             c.post("/api/agent/chat", json={"question": "x"})
