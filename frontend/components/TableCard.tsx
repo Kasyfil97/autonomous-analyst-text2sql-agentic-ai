@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { type SearchCard } from "@/lib/api";
 
 function DomainBadge({ label }: { label: string }) {
@@ -29,17 +28,23 @@ function PiiBadge({ status }: { status: SearchCard["pii"] }) {
   );
 }
 
-/** Path to a table's detail page, keyed by its schema-qualified physical name. */
-export function tableHref(card: SearchCard): string {
-  return `/table/${encodeURIComponent(card.physical_name)}`;
-}
-
-export function TableCard({ card, onAsk }: { card: SearchCard; onAsk: (t: string) => void }) {
-  const router = useRouter();
-  const href = tableHref(card);
-
+/**
+ * A result card. Opening it (click / Enter / Space) invokes `onOpen(physical_name)`, which the
+ * SearchPane uses to open the detail slide-over — detail is now an in-workspace panel, not a route.
+ * "Kirim ke agent" attaches the table to the active session's agent context via `onAsk`.
+ * (Drag-and-drop is Unit 7; only the button handoff is wired here.)
+ */
+export function TableCard({
+  card,
+  onOpen,
+  onAsk,
+}: {
+  card: SearchCard;
+  onOpen: (physicalName: string) => void;
+  onAsk: (t: string) => void;
+}) {
   function open() {
-    router.push(href);
+    onOpen(card.physical_name);
   }
 
   return (
@@ -73,7 +78,7 @@ export function TableCard({ card, onAsk }: { card: SearchCard; onAsk: (t: string
           }}
           className="shrink-0 rounded-lg border border-[color:var(--color-accent)]/30 bg-[color:var(--color-accent)]/5 px-3 py-1.5 text-xs font-semibold text-[color:var(--color-accent)] transition-colors hover:bg-[color:var(--color-accent)]/10"
         >
-          Tanya agent ↗
+          Kirim ke agent ↗
         </button>
       </div>
 

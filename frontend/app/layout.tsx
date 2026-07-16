@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Instrument_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { Sidebar } from "@/components/Sidebar";
+import { SessionsRail } from "@/components/SessionsRail";
 import { AppStateProvider } from "@/components/AppState";
 
 const sans = Instrument_Sans({
@@ -28,9 +28,12 @@ export default function RootLayout({
     <html lang="id" className={`${sans.variable} ${mono.variable} h-full`}>
       <body className="min-h-full">
         <AppStateProvider>
-          <div className="app-shell grid min-h-screen grid-cols-[248px_minmax(0,1fr)]">
-            <Sidebar />
-            <main className="min-w-0">{children}</main>
+          {/* Unified workspace: a fixed rail + two independently scrolling flex regions.
+              `children` (page.tsx) renders the two panes; `contents` lets them become grid cells
+              directly so each region scrolls on its own within the viewport height. */}
+          <div className="app-shell grid h-screen grid-cols-[240px_minmax(360px,1fr)_minmax(320px,1fr)] overflow-hidden">
+            <SessionsRail />
+            <div className="contents">{children}</div>
           </div>
         </AppStateProvider>
         <div className="below-min">

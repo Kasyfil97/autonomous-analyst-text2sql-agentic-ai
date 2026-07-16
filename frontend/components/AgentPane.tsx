@@ -1,8 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useRef } from "react";
-import { useSearchParams } from "next/navigation";
-import Link from "next/link";
+import { useEffect, useRef } from "react";
 import {
   agentChat,
   type AgentResponse,
@@ -15,8 +13,13 @@ import { useAppState, type ChatTurn } from "@/components/AppState";
 
 const UNVERIFIED_PREFIX = "-- UNVERIFIED DRAFT";
 
+const TRY_ASKING = [
+  "Berapa jumlah transaksi kartu kredit per bulan selama 2025?",
+  "Total nominal transaksi per kantor cabang tahun ini",
+  "Daftar nasabah baru per bulan dengan saldo rata-rata",
+];
+
 // Parse explanation into discrete bullet points.
-// Handles: "- bullet\n- bullet", numbered lists, multi-line, or prose sentences.
 function parsePoints(text: string): string[] {
   if (!text.trim()) return [];
   if (/^[-•*▸]\s/m.test(text)) {
@@ -167,12 +170,16 @@ function AgentResultCard({ result }: { result: AgentResponse }) {
 
       <div className="divide-y divide-[color:var(--color-line)]">
         {result.declined ? (
-          <div className="px-5 py-5">
+          // Gate-decline: an intentional safety hold, visually distinct from a network error.
+          <div className="border-l-4 border-[color:var(--color-warn-line)] bg-[color:var(--color-warn-bg)]/40 px-5 py-5">
             <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--color-warn)]">
               <span>🚫</span> Agent menahan draft
             </div>
+            <p className="mt-1 text-xs text-[color:var(--color-muted)]">
+              Ini adalah penahanan keamanan yang disengaja, bukan kegagalan jaringan.
+            </p>
             {result.missing && (
-              <p className="mt-2 text-xs text-[color:var(--color-muted)]">{result.missing}</p>
+              <p className="mt-2 text-xs text-[color:var(--color-warn)]">{result.missing}</p>
             )}
           </div>
         ) : (
@@ -261,26 +268,18 @@ function UserBubble({ turn }: { turn: ChatTurn }) {
   );
 }
 
-function AgentInner() {
-  const params = useSearchParams();
+export function AgentPane() {
   const { agent, setAgent } = useAppState();
   const { attached, question, turns, sending } = agent;
   const endRef = useRef<HTMLDivElement | null>(null);
-
-  // Attach a table handed off from Search (?table=...), if not already pending.
-  useEffect(() => {
-    const t = params.get("table");
-    if (t) setAgent((s) => (s.attached.includes(t) ? s : { ...s, attached: [...s.attached, t] }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params]);
 
   // Keep the newest turn in view.
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [turns, sending]);
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
+  async function submit(e?: React.FormEvent) {
+    e?.preventDefault();
     const text = question.trim();
     if (!text || sending) return;
 
@@ -330,7 +329,7 @@ function AgentInner() {
           {
             id: crypto.randomUUID(),
             role: "assistant",
-            error: err instanceof Error ? err.message : "The agent is unavailable.",
+            error: err instanceof Error ? err.message : "Agent tidak tersedia.",
           },
         ],
         sending: false,
@@ -345,18 +344,17 @@ function AgentInner() {
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      submit(e as unknown as React.FormEvent);
+      submit();
     }
   }
 
   return (
-    <div className="mx-auto flex h-screen max-w-3xl flex-col px-8 py-6">
+    <div className="flex h-full min-h-0 flex-col border-l border-[color:var(--color-line)] px-6 py-6">
       <header className="flex items-start justify-between gap-4 pb-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">AI Data Agent</h1>
+          <h1 className="text-lg font-semibold tracking-tight">AI Data Agent</h1>
           <p className="mt-1 text-sm text-[color:var(--color-muted)]">
             Percakapan analitik — agent menyusun <strong>draft SQL</strong> (tidak dieksekusi).
-            Ajukan lanjutan untuk menyempurnakan.
           </p>
         </div>
         {turns.length > 0 && (
@@ -373,15 +371,23 @@ function AgentInner() {
       {/* Conversation */}
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto pr-1">
         {turns.length === 0 && !sending && (
-          <div className="rounded-xl border border-dashed border-[color:var(--color-line)] px-6 py-10 text-center text-sm text-[color:var(--color-muted)]">
-            Mulai percakapan — ajukan pertanyaan di bawah, atau mulai dari{" "}
-            <Link
-              href="/search"
-              className="font-semibold text-[color:var(--color-accent-2)] hover:underline"
-            >
-              Pencarian
-            </Link>{" "}
-            untuk melampirkan tabel.
+          <div className="rounded-xl border border-dashed border-[color:var(--color-line)] px-6 py-8">
+            <p className="text-sm font-semibold text-[color:var(--color-ink)]">Coba tanyakan</p>
+            <p className="mt-1 text-xs text-[color:var(--color-muted)]">
+              Mulai percakapan, atau kirim tabel dari hasil pencarian untuk melampirkannya.
+            </p>
+            <div className="mt-4 grid gap-2">
+              {TRY_ASKING.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  onClick={() => setAgent((s) => ({ ...s, question: prompt }))}
+                  className="rounded-lg border border-[color:var(--color-line)] bg-[color:var(--color-panel)] px-3 py-2 text-left text-sm text-[color:var(--color-ink)] transition-colors hover:border-[color:var(--color-accent)]/50 hover:text-[color:var(--color-accent)]"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -389,9 +395,11 @@ function AgentInner() {
           t.role === "user" ? (
             <UserBubble key={t.id} turn={t} />
           ) : t.error ? (
+            // Network / availability error — distinct from a gate-decline (which renders inside
+            // AgentResultCard with a safety-hold treatment).
             <div
               key={t.id}
-              className="rounded-xl border border-[color:var(--color-warn-line)] bg-[color:var(--color-warn-bg)] px-4 py-3 text-xs text-[color:var(--color-warn)]"
+              className="rounded-xl border border-[color:var(--color-danger)]/40 bg-[color:var(--color-danger)]/5 px-4 py-3 text-xs text-[color:var(--color-danger)]"
             >
               <p className="font-semibold">Agent tidak tersedia</p>
               <p className="mt-1">{t.error}</p>
@@ -457,17 +465,5 @@ function AgentInner() {
         </div>
       </form>
     </div>
-  );
-}
-
-export default function AgentPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="p-8 text-sm text-[color:var(--color-muted)]">Loading…</div>
-      }
-    >
-      <AgentInner />
-    </Suspense>
   );
 }
