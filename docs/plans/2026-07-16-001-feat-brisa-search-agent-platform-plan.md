@@ -31,8 +31,11 @@ already exists in the KB, so the plan opens by inspecting it.
 
 Carried from the origin requirements doc (R# match the origin):
 
-- R1/R2. New Next.js + FastAPI app separate from `web.py`; two explicit endpoints; **no**
-  `orchestrator.py` router — each endpoint calls its logic directly.
+- R1/R2. New Next.js + FastAPI app separate from `web.py`; two explicit endpoints. Search calls
+  its logic directly. **Update:** the agent endpoint now calls `orchestrator.route()` first as an
+  out-of-scope gate — a question unrelated to bank data (`other`) falls back with
+  `FALLBACK_MESSAGE` instead of drafting SQL; `sql`/`search` proceed to `generate_sql`. (The full
+  `orchestrator.handle` dispatch is still not used — only the lightweight route classification.)
 - R3. No execution, no Postgres writes; reuse `retrieval.py`/`agent.py`/`gates.py`/PII
   redaction, adding only additive, backward-compatible code.
 - R4/R4a. Search = pure semantic retrieval (ranking via `hybrid_search`) + hydration; the

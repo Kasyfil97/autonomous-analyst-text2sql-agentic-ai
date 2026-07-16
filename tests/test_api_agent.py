@@ -41,6 +41,8 @@ def client(monkeypatch):
         )
 
     monkeypatch.setattr(api._agent, "generate_sql", fake_gen)
+    # Deterministic routing — default to the SQL path; individual tests override to 'other'.
+    monkeypatch.setattr(api._orchestrator, "route", lambda q, s: "sql")
     # raise_server_exceptions=False so the registered 500 handler's response is observed.
     with TestClient(api.create_app(), raise_server_exceptions=False) as c:
         yield c, captured
@@ -95,6 +97,17 @@ def test_backend_error_yields_generic_envelope(client, monkeypatch):
     body = resp.json()
     assert body["error"]["code"] == "internal_error"
     assert "secret-token-abc123" not in str(body)  # raw exception text never leaks
+
+
+def test_offtopic_question_routes_to_fallback(client, monkeypatch):
+    c, cap = client
+    monkeypatch.setattr(api._orchestrator, "route", lambda q, s: "other")  # unrelated to data
+    resp = c.post("/api/agent/chat", json={"question": "ceritakan lelucon lucu dong"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["declined"] is True
+    assert body["missing"] == api._orchestrator.FALLBACK_MESSAGE
+    assert "question" not in cap  # generate_sql was NOT called for an off-topic question
 
 
 def test_attached_tables_resolved_before_generate(client):

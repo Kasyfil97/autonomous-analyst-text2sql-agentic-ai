@@ -31,6 +31,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from text2sql import agent as _agent
 from text2sql import api_serializers as _serializers
+from text2sql import orchestrator as _orchestrator
 from text2sql import search_service as _search
 from text2sql.audit_log import get_logger, new_request
 from text2sql.embedding_service import pg_config
@@ -284,8 +285,13 @@ def create_app() -> FastAPI:
         question = (req.question or "").strip()
         if not question:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="question is required")
-        attached = _resolve_attached_tables(req.attached_tables, conn)
-        result = _agent.generate_sql(question, session=session, conn=conn, attached_tables=attached)
+        # Route first (router_prompt): a question unrelated to bank data ('other') falls back
+        # without drafting SQL. 'sql'/'search' both proceed to the draft-SQL agent.
+        if _orchestrator.route(question, session) == "other":
+            result = _agent.Text2SQLResult.decline(_orchestrator.FALLBACK_MESSAGE)
+        else:
+            attached = _resolve_attached_tables(req.attached_tables, conn)
+            result = _agent.generate_sql(question, session=session, conn=conn, attached_tables=attached)
         return _serializers.agent_result_to_payload(result)
 
     return app
