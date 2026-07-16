@@ -154,7 +154,16 @@ def test_apply_gates_warns_unsafe_sql(conn):
     assert any("unsafe_sql" in w for w in out.warnings)
 
 
-def test_apply_gates_no_sql_declines(conn):
+def test_apply_gates_no_sql_releases_with_warning(conn):
+    # Warn, don't block: a missing draft is released as a warned response, not a hard decline.
     ctx = FakeCtx(retrieved=set())
     out = apply_gates(Text2SQLResult(sql=None), ctx, conn)
-    assert out.declined
+    assert not out.declined
+    assert any("did not produce a SQL draft" in w for w in out.warnings)
+
+
+def test_apply_gates_model_self_decline_released_with_warning(conn):
+    ctx = FakeCtx(retrieved=set())
+    out = apply_gates(Text2SQLResult(declined=True, missing="no relevant tables"), ctx, conn)
+    assert not out.declined
+    assert any("low confidence" in w and "no relevant tables" in w for w in out.warnings)

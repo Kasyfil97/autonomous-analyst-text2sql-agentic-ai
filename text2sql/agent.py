@@ -5,9 +5,11 @@ its draft. We parse that (JSON-from-final-text — chosen primary because forced
 structured-output forces a *single* tool call and would block the retrieval tools), then
 run the gates. The gates are authoritative but warn-don't-block: a failing gate attaches
 a severity-tagged warning to the result instead of declining, so the draft still reaches
-the human reviewer. The only hard declines left are *no parseable answer* and *no SQL at
-all* — there is nothing to return in those cases. The dialect is taken deterministically
-from the cited top ERA precedent's ``query_engine``.
+the human reviewer. This extends to the previously-hard declines too — a model self-decline
+or a missing/unparseable draft is now released as a warned response rather than blocked, so
+``generate_sql`` never returns ``declined=True``. The only intentional decline is the API
+endpoint's out-of-scope router fallback. The dialect is taken deterministically from the
+cited top ERA precedent's ``query_engine``.
 """
 from __future__ import annotations
 
@@ -197,12 +199,21 @@ def apply_gates(result: Text2SQLResult, ctx: RetrievalContext, conn, *,
         sorted(ctx.retrieved_tables), len(ctx.calls),
     )
 
+    # Warn, don't block: a model self-decline or a missing draft is released as a warned response
+    # — not hidden behind a hard decline — so the analyst still sees the agent's reasoning. (The
+    # endpoint's out-of-scope router fallback is a separate, intentional decline.)
     if result.declined:
-        _log.info("apply_gates | skipped — result already declined by model")
-        return result
+        _log.info("apply_gates | model self-declined — releasing as a warning, not blocking")
+        result.warnings = list(result.warnings) + [
+            f"[HIGH] agent flagged low confidence: {result.missing or 'no reason given'}"]
+        result.declined = False
+        result.missing = None
     if not result.sql:
-        _log.warning("apply_gates | DECLINE — model produced no SQL field")
-        return Text2SQLResult.decline("model produced no SQL")
+        _log.warning("apply_gates | no SQL produced — releasing a warned response (not a decline)")
+        result.declined = False
+        result.warnings = list(result.warnings) + [
+            "[HIGH] the agent did not produce a SQL draft; review the interpretation and warnings above"]
+        return result
 
     # Dialect: a confident precedent's query_engine is authoritative; when no precedent
     # anchors it (schema-first path), fall back to the model's self-reported dialect and
