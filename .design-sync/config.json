@@ -1,0 +1,18 @@
+{
+  "pkg": "frontend",
+  "globalName": "Brisa",
+  "projectId": "cc049f67-bf94-4666-9370-a0ee2b5208d2",
+  "shape": "package",
+  "entry": "./frontend/.ds-entry.tsx",
+  "srcDir": "components",
+  "tsconfig": ".ds-tsconfig.json",
+  "cssEntry": ".ds-styles.css",
+  "runtimeFontPrefixes": ["Cascadia Code"],
+  "readmeHeader": ".design-sync/conventions.md",
+  "componentSrcMap": {
+    "Sidebar": "components/Sidebar.tsx",
+    "SqlBlock": "components/SqlBlock.tsx",
+    "TableCard": "components/TableCard.tsx",
+    "AppStateProvider": "components/AppState.tsx"
+  }
+}
