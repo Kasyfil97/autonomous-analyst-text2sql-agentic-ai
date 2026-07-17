@@ -1,7 +1,7 @@
 ---
 title: "feat: Sage redesign & rebrand of the BRISA search + agent console"
 type: feat
-status: active
+status: completed
 date: 2026-07-17
 origin: docs/brainstorms/2026-07-16-sage-redesign-requirements.md
 deepened: 2026-07-17
