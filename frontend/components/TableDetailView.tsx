@@ -76,8 +76,8 @@ export function TableDetailView({ id, onBack }: { id: string; onBack: () => void
             </svg>
           </button>
           <div className="flex min-w-0 items-center gap-2">
-            <h1 className="truncate text-lg font-semibold tracking-tight text-[color:var(--color-ink)]">
-              {card ? card.headline : id}
+            <h1 className="truncate font-mono text-lg font-semibold tracking-tight text-[color:var(--color-ink)]">
+              {card ? card.table_name : id}
             </h1>
             {card?.domain_tags.slice(0, 1).map((d) => (
               <DomainBadge key={d} label={d} size="md" />
@@ -94,7 +94,7 @@ export function TableDetailView({ id, onBack }: { id: string; onBack: () => void
               "inline-flex shrink-0 items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold transition-colors",
               attachAtCap
                 ? "border border-[color:var(--color-warn-line)] bg-[color:var(--color-warn-bg)] text-[color:var(--color-warn)]"
-                : "bg-[color:var(--color-accent)] text-white hover:brightness-95",
+                : "bg-[color:var(--color-accent-strong)] text-white hover:brightness-95",
             ].join(" ")}
           >
             <span aria-hidden className="text-base leading-none">＋</span>

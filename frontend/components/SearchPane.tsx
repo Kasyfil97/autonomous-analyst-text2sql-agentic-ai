@@ -124,7 +124,7 @@ export function SearchPane({ onOpenTable }: { onOpenTable: (physicalName: string
           </div>
           <button
             type="submit"
-            className="shrink-0 rounded-lg bg-[color:var(--color-accent)] px-5 text-sm font-semibold text-white transition-colors hover:brightness-95"
+            className="shrink-0 rounded-lg bg-[color:var(--color-accent-strong)] px-5 text-sm font-semibold text-white transition-colors hover:brightness-95"
           >
             Cari
           </button>
@@ -215,7 +215,7 @@ function CategoryChip({
       className={[
         "shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold capitalize transition-colors",
         active
-          ? "bg-[color:var(--color-accent)] text-white"
+          ? "bg-[color:var(--color-accent-strong)] text-white"
           : "border border-[color:var(--color-line)] bg-[color:var(--color-panel)] text-[color:var(--color-muted)] hover:border-[color:var(--color-accent)]/50 hover:text-[color:var(--color-accent)]",
       ].join(" ")}
     >
@@ -352,6 +352,19 @@ function EmptyState({
 }) {
   return (
     <div className="rounded-xl border border-dashed border-[color:var(--color-line)] px-6 py-10 text-center">
+      {/* data-search glyph above the copy */}
+      <div
+        aria-hidden
+        className="mx-auto mb-3 grid h-11 w-11 place-items-center rounded-full bg-[color:var(--color-accent)]/10 text-[color:var(--color-accent)]"
+      >
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <ellipse cx="12" cy="5" rx="7" ry="3" />
+          <path d="M5 5v6c0 1.66 3.13 3 7 3s7-1.34 7-3V5" />
+          <path d="M5 11v6c0 1.66 3.13 3 7 3" />
+          <circle cx="17.5" cy="17.5" r="3" />
+          <line x1="22" y1="22" x2="19.6" y2="19.6" />
+        </svg>
+      </div>
       <p className="text-base font-semibold">{title}</p>
       <p className="mt-1 text-sm text-[color:var(--color-muted)]">{hint}</p>
       <div className="mt-5 flex flex-wrap justify-center gap-2">

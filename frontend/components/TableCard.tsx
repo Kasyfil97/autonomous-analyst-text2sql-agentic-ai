@@ -43,7 +43,7 @@ export function TableCard({
       role="link"
       tabIndex={0}
       draggable
-      aria-label={`Lihat detail tabel ${card.headline}`}
+      aria-label={`Lihat detail tabel ${card.table_name}`}
       onClick={open}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -78,10 +78,10 @@ export function TableCard({
             ⠿
           </span>
           <div className="min-w-0">
-            <h3 className="truncate text-[15px] font-semibold text-[color:var(--color-ink)] group-hover:text-[color:var(--color-accent)]">
-              {card.headline}
+            <h3 className="truncate font-mono text-[15px] font-semibold text-[color:var(--color-ink)] group-hover:text-[color:var(--color-accent)]">
+              {card.table_name}
             </h3>
-            <p className="mt-0.5 truncate font-mono text-xs text-[color:var(--color-muted)]">
+            <p className="mt-0.5 truncate text-xs text-[color:var(--color-muted)]">
               {card.physical_name}
             </p>
           </div>
