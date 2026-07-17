@@ -50,9 +50,12 @@ def fakes(monkeypatch):
     monkeypatch.setattr(api._search, "search_tables",
                         lambda conn, q, domain=None, limit=10: {"results": []})
     monkeypatch.setattr(api._agent, "generate_sql",
-                        lambda question, session=None, conn=None, attached_tables=None:
+                        lambda question, session=None, conn=None, attached_tables=None, history=None:
                         Text2SQLResult(sql="SELECT 1"))
+    # require_auth dual-reads SAGE_API_TOKEN or BRISA_API_TOKEN — clear BOTH so a stale legacy token
+    # in the ambient env can't break the "open when unset" posture the tests assume.
     monkeypatch.delenv("SAGE_API_TOKEN", raising=False)
+    monkeypatch.delenv("BRISA_API_TOKEN", raising=False)
     return {"pool": pool, "session_calls": session_calls}
 
 
@@ -130,10 +133,26 @@ def test_session_lazy_build_is_single(fakes, monkeypatch):
     monkeypatch.setattr(api, "build_pool", lambda: FakePool())
     monkeypatch.setattr(api._agent, "known_tables", lambda conn: set())
     monkeypatch.setattr(api._agent, "generate_sql",
-                        lambda question, session=None, conn=None, attached_tables=None:
+                        lambda question, session=None, conn=None, attached_tables=None, history=None:
                         Text2SQLResult(sql="SELECT 1"))
     monkeypatch.delenv("SAGE_API_TOKEN", raising=False)
+    monkeypatch.delenv("BRISA_API_TOKEN", raising=False)
     with TestClient(api.create_app()) as c:
         for _ in range(3):
             c.post("/api/agent/chat", json={"question": "x"})
     assert state["n"] == 1  # lazy-built exactly once, then reused
+
+
+def test_auth_dual_read_alias_honours_legacy_brisa_token(client, monkeypatch):
+    """The one-release alias: with only the legacy BRISA_API_TOKEN set (SAGE unset), that bearer
+    token authorizes and a wrong/missing token is still rejected — locking in the dual-read."""
+    c, _ = client
+    monkeypatch.delenv("SAGE_API_TOKEN", raising=False)
+    monkeypatch.setenv("BRISA_API_TOKEN", "legacy-tok")
+    # Missing / wrong bearer → 401.
+    assert c.get("/api/search", params={"q": "x"}).status_code == 401
+    assert c.get("/api/search", params={"q": "x"},
+                 headers={"Authorization": "Bearer nope"}).status_code == 401
+    # The legacy token authorizes via the alias → reaches the stubbed handler → 200.
+    assert c.get("/api/search", params={"q": "x"},
+                 headers={"Authorization": "Bearer legacy-tok"}).status_code == 200

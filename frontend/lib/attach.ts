@@ -41,3 +41,20 @@ export function addAttached(
   }
   return { next: [...current, table], result: "added" };
 }
+
+/**
+ * Centralized attach-button label for a given outcome (or `null` before any attempt). The cap copy
+ * derives its number from `MAX_ATTACHED` so it can never drift from the actual cap. Indonesian copy.
+ */
+export function attachResultLabel(result: AttachResult | null): string {
+  switch (result) {
+    case "added":
+      return "Ditambahkan ke agent ✓";
+    case "duplicate":
+      return "Sudah terlampir ✓";
+    case "cap":
+      return `Maksimal ${MAX_ATTACHED} tabel`;
+    default:
+      return "Kirim ke agent ↗";
+  }
+}

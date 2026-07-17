@@ -2,33 +2,8 @@
 
 import { useRef } from "react";
 import { type SearchCard } from "@/lib/api";
-import { ATTACH_DND_TYPE } from "@/lib/attach";
-
-function DomainBadge({ label }: { label: string }) {
-  return (
-    <span className="rounded-full bg-[color:var(--color-panel-2)] px-2 py-0.5 text-[11px] font-medium text-[color:var(--color-muted)]">
-      {label}
-    </span>
-  );
-}
-
-function PiiBadge({ status }: { status: SearchCard["pii"] }) {
-  if (status === "present") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-[color:var(--color-warn-line)] bg-[color:var(--color-warn-bg)] px-2 py-0.5 text-[11px] font-semibold text-[color:var(--color-warn)]">
-        <span aria-hidden>⚠</span> PII
-      </span>
-    );
-  }
-  return (
-    <span
-      className="rounded-full border border-dashed border-[color:var(--color-line)] px-2 py-0.5 text-[11px] text-[color:var(--color-muted)]"
-      title="Sensitivity not classified — absence of a PII flag does not mean the table is safe."
-    >
-      sensitivity not classified
-    </span>
-  );
-}
+import { ATTACH_DND_TYPE, MAX_ATTACHED } from "@/lib/attach";
+import { DomainBadge, PiiBadge } from "@/components/Badges";
 
 /**
  * A result card. Opening it (click / Enter / Space) invokes `onOpen(physical_name)`, which the
@@ -114,7 +89,7 @@ export function TableCard({
         <button
           type="button"
           aria-disabled={atCap}
-          title={atCap ? "Maksimal 10 tabel" : undefined}
+          title={atCap ? `Maksimal ${MAX_ATTACHED} tabel` : undefined}
           onClick={(e) => {
             e.stopPropagation();
             onAsk(card.table_name);

@@ -2,33 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { ApiError, tableDetail, type TableDetail } from "@/lib/api";
-import type { AttachResult } from "@/lib/attach";
-
-function DomainBadge({ label }: { label: string }) {
-  return (
-    <span className="rounded-full bg-[color:var(--color-panel-2)] px-2.5 py-0.5 text-xs font-medium text-[color:var(--color-muted)]">
-      {label}
-    </span>
-  );
-}
-
-function PiiBadge({ status }: { status: TableDetail["card"]["pii"] }) {
-  if (status === "present") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-[color:var(--color-warn-line)] bg-[color:var(--color-warn-bg)] px-2.5 py-0.5 text-xs font-semibold text-[color:var(--color-warn)]">
-        <span aria-hidden>⚠</span> PII
-      </span>
-    );
-  }
-  return (
-    <span
-      className="rounded-full border border-dashed border-[color:var(--color-line)] px-2.5 py-0.5 text-xs text-[color:var(--color-muted)]"
-      title="Sensitivity not classified — absence of a PII flag does not mean the table is safe."
-    >
-      sensitivity not classified
-    </span>
-  );
-}
+import { attachResultLabel, type AttachResult } from "@/lib/attach";
+import { DomainBadge, PiiBadge } from "@/components/Badges";
 
 /**
  * Right-side slide-over that overlays the RESULTS region only (its parent must be `relative`), so
@@ -83,15 +58,9 @@ export function TableDetailPanel({
   }
 
   // The aria-live announcement is owned centrally by AgentPane (both paths share it), so the
-  // button here only carries a local visual confirmation.
-  const attachLabel =
-    attachResult === "added"
-      ? "Ditambahkan ke agent ✓"
-      : attachResult === "duplicate"
-        ? "Sudah terlampir ✓"
-        : attachResult === "cap"
-          ? "Maksimal 10 tabel"
-          : "Kirim ke agent ↗";
+  // button here only carries a local visual confirmation. Label mapping is shared (attach.ts) so the
+  // cap copy stays pinned to MAX_ATTACHED.
+  const attachLabel = attachResultLabel(attachResult);
   const attachAtCap = attachResult === "cap";
 
   return (
@@ -158,9 +127,9 @@ export function TableDetailPanel({
 
                 <div className="mt-3 flex flex-wrap items-center gap-1.5">
                   {detail.card.domain_tags.map((d) => (
-                    <DomainBadge key={d} label={d} />
+                    <DomainBadge key={d} label={d} size="md" />
                   ))}
-                  <PiiBadge status={detail.card.pii} />
+                  <PiiBadge status={detail.card.pii} size="md" />
                 </div>
 
                 {detail.card.description && (

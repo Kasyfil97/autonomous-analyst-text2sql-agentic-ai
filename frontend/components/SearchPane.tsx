@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { listDomains, searchTables } from "@/lib/api";
+import { searchTables } from "@/lib/api";
 import { MAX_ATTACHED } from "@/lib/attach";
+import { useDomains } from "@/lib/useDomains";
 import { TableCard } from "@/components/TableCard";
 import { TableDetailPanel } from "@/components/TableDetailPanel";
 import { useAppState } from "@/components/AppState";
@@ -21,22 +22,16 @@ function Skeletons() {
 }
 
 export function SearchPane() {
-  const { search, setSearch, agent, attachTable } = useAppState();
+  const { search, setSearch, agent, attachTable, activeId } = useAppState();
   const { q, domain, res } = search;
   const atCap = agent.attached.length >= MAX_ATTACHED;
 
-  const [domains, setDomains] = useState<string[]>([]);
+  const domains = useDomains();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
 
   const setQ = (value: string) => setSearch((s) => ({ ...s, q: value }));
-
-  useEffect(() => {
-    listDomains()
-      .then((d) => setDomains(d.domains))
-      .catch(() => setDomains([]));
-  }, []);
 
   async function run(query: string, dom: string | null) {
     if (!query.trim()) return;
@@ -55,14 +50,31 @@ export function SearchPane() {
 
   // Re-run when the Category facet (rail's `domain`) changes AND we already have results, so the
   // rail facet and the results stay in sync without duplicating the facet UI in this pane.
-  const prevDomain = useRef(domain);
+  //
+  // The guard is SESSION-AWARE: a session switch also changes the visible `domain` (each session
+  // carries its own facet), but that is NOT a genuine facet change and must NOT re-run a search
+  // (which would clobber the switched-to session's existing `res`). We track the last-seen
+  // {activeId, domain} and only re-run when `domain` changed while `activeId` stayed the same; on a
+  // switch we just sync the ref.
+  const prevFacet = useRef({ activeId, domain });
   useEffect(() => {
-    if (prevDomain.current !== domain) {
-      prevDomain.current = domain;
-      if (res && q.trim()) run(q, domain);
-    }
+    const prev = prevFacet.current;
+    const sameSession = prev.activeId === activeId;
+    const domainChanged = prev.domain !== domain;
+    prevFacet.current = { activeId, domain };
+    if (sameSession && domainChanged && res && q.trim()) run(q, domain);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [domain]);
+  }, [domain, activeId]);
+
+  // Reset the slide-over when switching sessions so a panel opened over the previous session's
+  // results doesn't linger over the newly-active session's (unrelated) results.
+  const prevActive = useRef(activeId);
+  useEffect(() => {
+    if (prevActive.current !== activeId) {
+      prevActive.current = activeId;
+      setDetailId(null);
+    }
+  }, [activeId]);
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();

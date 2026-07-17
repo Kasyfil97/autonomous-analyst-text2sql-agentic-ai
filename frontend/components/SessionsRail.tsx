@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { listDomains } from "@/lib/api";
+import { useDomains } from "@/lib/useDomains";
 import { useAppState } from "@/components/AppState";
 import type { Session } from "@/lib/sessions";
 
@@ -50,13 +49,7 @@ export function SessionsRail() {
   } = useAppState();
 
   const { domain, res } = search;
-  const [domains, setDomains] = useState<string[]>([]);
-
-  useEffect(() => {
-    listDomains()
-      .then((d) => setDomains(d.domains))
-      .catch(() => setDomains([]));
-  }, []);
+  const domains = useDomains();
 
   function pickDomain(d: string | null) {
     // Category is a UI-only relabel of the `domain` field. Clearing the current result when the
@@ -100,12 +93,13 @@ export function SessionsRail() {
           {sessions.map((s) => {
             const active = s.id === activeId;
             const generating = generatingIds.includes(s.id);
+            const title = sessionTitle(s);
             return (
               <button
                 key={s.id}
                 type="button"
                 onClick={() => switchSession(s.id)}
-                title={sessionTitle(s)}
+                title={title}
                 className={[
                   "flex items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
                   active
@@ -127,7 +121,7 @@ export function SessionsRail() {
                     ].join(" ")}
                   />
                 )}
-                <span className="truncate">{sessionTitle(s)}</span>
+                <span className="truncate">{title}</span>
               </button>
             );
           })}

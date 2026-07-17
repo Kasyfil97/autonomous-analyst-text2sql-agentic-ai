@@ -113,6 +113,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [lastAttach, setLastAttach] = useState<AttachAnnouncement | null>(null);
   const attachNonce = useRef(0);
 
+  // Live mirrors of `state` / `transient`, kept in sync on every render so callbacks captured once
+  // (stable identity) still read the CURRENT values — not a stale closure snapshot. This is what
+  // lets `setAgent` apply a caller's updater against LIVE turns even when the same captured setter
+  // is invoked twice across an `await` (append user turn, then append assistant turn).
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const transientRef = useRef(transient);
+  transientRef.current = transient;
+
   // Hydrate once, client-only, post-mount.
   useEffect(() => {
     const now = Date.now();
@@ -214,26 +223,35 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   // per-session `agent` slices and a per-session `sending` flag are addressable by id.
   const setAgent: Dispatch<SetStateAction<AgentState>> = useCallback(
     (updater) => {
-      const id = state.activeId;
-      const prevTransient = transient[id] ?? EMPTY_TRANSIENT;
-      const prevAgent: AgentState = {
-        attached: state.sessions[id]?.agent.attached ?? [],
-        turns: state.sessions[id]?.agent.turns ?? [],
-        question: prevTransient.question,
-        sending: prevTransient.sending,
-      };
-      const next =
-        typeof updater === "function"
-          ? (updater as (p: AgentState) => AgentState)(prevAgent)
-          : updater;
+      // Bind this call to the session that is active NOW (captured once, at call time). An in-flight
+      // request therefore lands in its ORIGIN session even if the user switches away mid-generation.
+      const id = stateRef.current.activeId;
+      // Stash the transient half computed inside the patch (which runs against LIVE state).
+      let stashed: Transient = transientRef.current[id] ?? EMPTY_TRANSIENT;
 
-      patchSessionAgent(id, { attached: next.attached, turns: next.turns });
-      setTransient((t) => ({
-        ...t,
-        [id]: { question: next.question, sending: next.sending },
-      }));
+      patchSessionAgent(id, (prevSlice) => {
+        const prevTransient = transientRef.current[id] ?? EMPTY_TRANSIENT;
+        const prevAgent: AgentState = {
+          attached: prevSlice.attached,
+          turns: prevSlice.turns,
+          question: prevTransient.question,
+          sending: prevTransient.sending,
+        };
+        const next =
+          typeof updater === "function"
+            ? (updater as (p: AgentState) => AgentState)(prevAgent)
+            : updater;
+        stashed = { question: next.question, sending: next.sending };
+        return { attached: next.attached, turns: next.turns };
+      });
+
+      setTransient((t) => {
+        const nt = { ...t, [id]: stashed };
+        transientRef.current = nt;
+        return nt;
+      });
     },
-    [patchSessionAgent, state.activeId, state.sessions, transient],
+    [patchSessionAgent],
   );
 
   // --- attach action (button + drag-and-drop) -------------------------------
@@ -287,9 +305,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [state.sessions],
   );
 
+  // Only surface a "generating" indicator for sessions that still EXIST. Evicted/cleared sessions
+  // can leave a dangling transient entry (transient is a parallel map); filtering by live
+  // membership prevents ghost indicators in the rail.
   const generatingIds = useMemo(
-    () => Object.entries(transient).filter(([, t]) => t.sending).map(([id]) => id),
-    [transient],
+    () =>
+      Object.entries(transient)
+        .filter(([id, t]) => t.sending && state.sessions[id])
+        .map(([id]) => id),
+    [transient, state.sessions],
   );
 
   const value: AppStateValue = {
