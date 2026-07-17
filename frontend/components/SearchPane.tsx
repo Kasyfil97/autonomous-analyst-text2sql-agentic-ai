@@ -5,7 +5,6 @@ import { searchTables } from "@/lib/api";
 import { MAX_ATTACHED } from "@/lib/attach";
 import { useDomains } from "@/lib/useDomains";
 import { TableCard } from "@/components/TableCard";
-import { TableDetailPanel } from "@/components/TableDetailPanel";
 import { useAppState } from "@/components/AppState";
 
 function Skeletons() {
@@ -21,7 +20,7 @@ function Skeletons() {
   );
 }
 
-export function SearchPane() {
+export function SearchPane({ onOpenTable }: { onOpenTable: (physicalName: string) => void }) {
   const { search, setSearch, agent, attachTable, activeId } = useAppState();
   const { q, domain, res } = search;
   const atCap = agent.attached.length >= MAX_ATTACHED;
@@ -29,9 +28,23 @@ export function SearchPane() {
   const domains = useDomains();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [detailId, setDetailId] = useState<string | null>(null);
 
-  const setQ = (value: string) => setSearch((s) => ({ ...s, q: value }));
+  // Emptying the query returns the pane to its initial state: clear the stored results (so the
+  // cards disappear) and any error. A non-empty edit just updates the text.
+  const setQ = (value: string) => {
+    setSearch((s) => ({ ...s, q: value, res: value.trim() ? s.res : null }));
+    if (!value.trim()) setError(null);
+  };
+
+  function clearSearch() {
+    setSearch((s) => ({ ...s, q: "", res: null }));
+    setError(null);
+  }
+
+  // Category facet is now a horizontally-scrollable chip row under the search bar (was the left
+  // rail). Selecting a chip updates `domain`; the effect below re-runs the search when results are
+  // already present, keeping the chips and the result list in sync.
+  const pickDomain = (d: string | null) => setSearch((s) => ({ ...s, domain: d }));
 
   async function run(query: string, dom: string | null) {
     if (!query.trim()) return;
@@ -66,23 +79,13 @@ export function SearchPane() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [domain, activeId]);
 
-  // Reset the slide-over when switching sessions so a panel opened over the previous session's
-  // results doesn't linger over the newly-active session's (unrelated) results.
-  const prevActive = useRef(activeId);
-  useEffect(() => {
-    if (prevActive.current !== activeId) {
-      prevActive.current = activeId;
-      setDetailId(null);
-    }
-  }, [activeId]);
-
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     run(q, domain);
   }
 
-  // The button + slide-over attach path. Enforces dedupe + the cap of 10 and announces the
-  // outcome via the shared aria-live region (in AgentPane), matching the drag-drop path.
+  // The button attach path. Enforces dedupe + the cap of 10 and announces the outcome via the
+  // shared aria-live region (in AgentPane), matching the drag-drop path.
   function askAgent(table: string) {
     attachTable(table);
   }
@@ -101,12 +104,24 @@ export function SearchPane() {
           kata kunci.
         </p>
         <form onSubmit={onSubmit} className="mt-3 flex gap-2">
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder='mis. "transaksi kartu kredit per bulan"'
-            className="w-full rounded-lg border border-[color:var(--color-line)] bg-white px-4 py-2.5 text-sm outline-none focus:border-[color:var(--color-accent)] focus:ring-2 focus:ring-[color:var(--color-accent)]/20"
-          />
+          <div className="relative w-full">
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder='mis. "transaksi kartu kredit per bulan"'
+              className="w-full rounded-lg border border-[color:var(--color-line)] bg-white px-4 py-2.5 pr-10 text-sm outline-none focus:border-[color:var(--color-accent)] focus:ring-2 focus:ring-[color:var(--color-accent)]/20"
+            />
+            {q && (
+              <button
+                type="button"
+                onClick={clearSearch}
+                aria-label="Hapus pencarian"
+                className="absolute inset-y-0 right-2 my-auto grid h-6 w-6 place-items-center rounded-md text-[color:var(--color-muted)] transition-colors hover:bg-[color:var(--color-panel-2)] hover:text-[color:var(--color-ink)]"
+              >
+                ✕
+              </button>
+            )}
+          </div>
           <button
             type="submit"
             className="shrink-0 rounded-lg bg-[color:var(--color-accent)] px-5 text-sm font-semibold text-white transition-colors hover:brightness-95"
@@ -114,24 +129,19 @@ export function SearchPane() {
             Cari
           </button>
         </form>
+
+        {/* Category filter — a quick "Semua" chip plus a Category dropdown (replaces the old rail). */}
+        <div className="mt-3 flex items-center gap-2">
+          <CategoryChip label="Semua" active={domain === null} onClick={() => pickDomain(null)} />
+          <CategoryDropdown domains={domains} value={domain} onChange={pickDomain} />
+          <span className="ml-auto shrink-0 whitespace-nowrap text-[11px] text-[color:var(--color-muted)]">
+            <span className="font-semibold uppercase tracking-widest">Urutkan</span>
+            <span className="ml-1.5">Relevansi</span>
+          </span>
+        </div>
       </header>
 
       <section className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-        {domain && (
-          <div className="mb-4 flex items-center gap-2">
-            <span className="inline-flex items-center gap-2 rounded-full bg-[color:var(--color-panel-2)] px-3 py-1 text-xs font-medium">
-              Kategori: {domain}
-              <button
-                onClick={() => setSearch((s) => ({ ...s, domain: null }))}
-                aria-label="Hapus filter"
-                className="text-[color:var(--color-muted)] hover:text-[color:var(--color-danger)]"
-              >
-                ✕
-              </button>
-            </span>
-          </div>
-        )}
-
         {loading && <Skeletons />}
 
         {!loading && error && (
@@ -152,7 +162,7 @@ export function SearchPane() {
         {!loading && !error && !res && (
           <EmptyState
             title="Mulai dari sebuah kebutuhan data"
-            hint="Atau telusuri berdasarkan kategori di rail kiri."
+            hint="Atau telusuri berdasarkan kategori di bawah kolom pencarian."
             domains={domains}
             onPick={(d) => {
               setSearch((s) => ({ ...s, domain: d, q: d }));
@@ -169,14 +179,7 @@ export function SearchPane() {
                 : "Tidak ada tabel yang cocok. Coba istilah lain atau bahasa Inggris."}
             </div>
             {res.closest_related?.map((c) => (
-              <TableCard
-                key={c.id}
-                card={c}
-                onOpen={setDetailId}
-                onAsk={askAgent}
-                onDragStartCard={() => setDetailId(null)}
-                atCap={atCap}
-              />
+              <TableCard key={c.id} card={c} onOpen={onOpenTable} onAsk={askAgent} atCap={atCap} />
             ))}
           </div>
         )}
@@ -187,27 +190,152 @@ export function SearchPane() {
               {cards.length} tabel · diurutkan berdasarkan relevansi
             </p>
             {cards.map((c) => (
-              <TableCard
-                key={c.id}
-                card={c}
-                onOpen={setDetailId}
-                onAsk={askAgent}
-                onDragStartCard={() => setDetailId(null)}
-                atCap={atCap}
-              />
+              <TableCard key={c.id} card={c} onOpen={onOpenTable} onAsk={askAgent} atCap={atCap} />
             ))}
           </div>
         )}
       </section>
+    </div>
+  );
+}
 
-      {detailId && (
-        <TableDetailPanel
-          id={detailId}
-          onClose={() => setDetailId(null)}
-          onAttach={attachTable}
-        />
+function CategoryChip({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold capitalize transition-colors",
+        active
+          ? "bg-[color:var(--color-accent)] text-white"
+          : "border border-[color:var(--color-line)] bg-[color:var(--color-panel)] text-[color:var(--color-muted)] hover:border-[color:var(--color-accent)]/50 hover:text-[color:var(--color-accent)]",
+      ].join(" ")}
+    >
+      {label}
+    </button>
+  );
+}
+
+function CategoryDropdown({
+  domains,
+  value,
+  onChange,
+}: {
+  domains: string[];
+  value: string | null;
+  onChange: (d: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close on outside click or Escape while the menu is open.
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const pick = (d: string | null) => {
+    onChange(d);
+    setOpen(false);
+  };
+
+  const active = value !== null;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className={[
+          "inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors",
+          active
+            ? "border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/10 text-[color:var(--color-accent)]"
+            : "border-[color:var(--color-line)] bg-[color:var(--color-panel)] text-[color:var(--color-muted)] hover:border-[color:var(--color-accent)]/50 hover:text-[color:var(--color-accent)]",
+        ].join(" ")}
+      >
+        {/* filter/sliders glyph */}
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+          <line x1="4" y1="7" x2="20" y2="7" />
+          <line x1="7" y1="12" x2="17" y2="12" />
+          <line x1="10" y1="17" x2="14" y2="17" />
+        </svg>
+        <span className="capitalize">{value ?? "Kategori"}</span>
+        <svg
+          width="11"
+          height="11"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={open ? "rotate-180 transition-transform" : "transition-transform"}
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          className="absolute left-0 top-full z-20 mt-1.5 max-h-72 w-56 overflow-y-auto rounded-lg border border-[color:var(--color-line)] bg-[color:var(--color-panel)] p-1 shadow-lg"
+        >
+          <DropdownItem label="Semua kategori" active={value === null} onClick={() => pick(null)} />
+          {domains.map((d) => (
+            <DropdownItem key={d} label={d} active={value === d} onClick={() => pick(d)} />
+          ))}
+        </div>
       )}
     </div>
+  );
+}
+
+function DropdownItem({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="option"
+      aria-selected={active}
+      onClick={onClick}
+      className={[
+        "flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-sm capitalize transition-colors",
+        active
+          ? "bg-[color:var(--color-accent)]/10 font-semibold text-[color:var(--color-accent)]"
+          : "text-[color:var(--color-ink)] hover:bg-[color:var(--color-panel-2)]",
+      ].join(" ")}
+    >
+      {label}
+      {active && <span className="text-[color:var(--color-accent)]">✓</span>}
+    </button>
   );
 }
 

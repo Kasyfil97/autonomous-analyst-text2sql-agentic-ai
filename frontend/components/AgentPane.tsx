@@ -284,7 +284,8 @@ function UserBubble({ turn }: { turn: ChatTurn }) {
 }
 
 export function AgentPane() {
-  const { agent, setAgent, attachTable, lastAttach } = useAppState();
+  const { agent, setAgent, attachTable, lastAttach, newSession, clearHistory, sessions, search } =
+    useAppState();
   const { attached, question, turns, sending } = agent;
   const endRef = useRef<HTMLDivElement | null>(null);
   const atCap = attached.length >= MAX_ATTACHED;
@@ -386,8 +387,14 @@ export function AgentPane() {
     }
   }
 
-  function newChat() {
-    setAgent((s) => ({ ...s, turns: [], question: "", attached: [], sending: false }));
+  function onClear() {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Hapus semua sesi dan riwayat? Tindakan ini tidak dapat dibatalkan.")
+    ) {
+      return;
+    }
+    clearHistory();
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -398,7 +405,7 @@ export function AgentPane() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col border-l border-[color:var(--color-line)] px-6 py-6">
+    <div className="flex h-full min-h-0 flex-col px-6 py-6">
       <header className="flex items-start justify-between gap-4 pb-4">
         <div>
           <div className="flex items-baseline gap-2">
@@ -409,15 +416,30 @@ export function AgentPane() {
             Percakapan analitik — agent menyusun <strong>draft SQL</strong> (tidak dieksekusi).
           </p>
         </div>
-        {turns.length > 0 && (
+        <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
-            onClick={newChat}
-            className="shrink-0 rounded-lg border border-[color:var(--color-line)] px-3 py-1.5 text-xs font-semibold text-[color:var(--color-muted)] transition-colors hover:border-[color:var(--color-danger)] hover:text-[color:var(--color-danger)]"
+            onClick={newSession}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[color:var(--color-accent)] px-3 py-1.5 text-white transition-colors hover:brightness-95"
           >
-            Percakapan baru
+            <span aria-hidden className="text-sm leading-none">＋</span>
+            <span className="flex flex-col leading-tight">
+              <span className="text-xs font-semibold">Sesi baru</span>
+              <span className="text-[9px] font-normal text-white/70">New session</span>
+            </span>
           </button>
-        )}
+          <button
+            type="button"
+            onClick={onClear}
+            disabled={!search.res && sessions.length <= 1}
+            className="flex flex-col rounded-lg border border-[color:var(--color-line)] px-3 py-1 text-xs font-semibold text-[color:var(--color-muted)] transition-colors hover:border-[color:var(--color-danger)] hover:text-[color:var(--color-danger)] disabled:opacity-50"
+          >
+            <span>Hapus riwayat</span>
+            <span className="text-[9px] font-normal text-[color:var(--color-muted)]/70">
+              Clear history
+            </span>
+          </button>
+        </div>
       </header>
 
       {/* Conversation */}

@@ -37,18 +37,9 @@ function SageMark() {
 }
 
 export function SessionsRail() {
-  const {
-    sessions,
-    activeId,
-    newSession,
-    switchSession,
-    clearHistory,
-    generatingIds,
-    search,
-    setSearch,
-  } = useAppState();
+  const { sessions, activeId, switchSession, generatingIds, search, setSearch } = useAppState();
 
-  const { domain, res } = search;
+  const { domain } = search;
   const domains = useDomains();
 
   function pickDomain(d: string | null) {
@@ -58,31 +49,9 @@ export function SessionsRail() {
     setSearch((s) => ({ ...s, domain: d }));
   }
 
-  function onClear() {
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm("Hapus semua sesi dan riwayat? Tindakan ini tidak dapat dibatalkan.")
-    ) {
-      return;
-    }
-    clearHistory();
-  }
-
   return (
     <aside className="flex h-full min-h-0 flex-col gap-5 border-r border-[color:var(--color-line)] bg-white/60 px-4 py-6 backdrop-blur">
       <SageMark />
-
-      <button
-        type="button"
-        onClick={newSession}
-        className="flex items-center justify-center gap-2 rounded-lg bg-[color:var(--color-accent)] px-3 py-2 text-white transition-colors hover:brightness-95"
-      >
-        <span aria-hidden className="text-base leading-none">＋</span>
-        <span className="flex flex-col items-center leading-tight">
-          <span className="text-sm font-semibold">Sesi baru</span>
-          <span className="text-[10px] font-normal text-white/70">New session</span>
-        </span>
-      </button>
 
       {/* Session list */}
       <div className="flex min-h-0 flex-col">
@@ -153,16 +122,6 @@ export function SessionsRail() {
           </span>
           <span className="text-[10px] text-[color:var(--color-muted)]/70">Sort: Relevance</span>
         </div>
-
-        <button
-          type="button"
-          onClick={onClear}
-          disabled={!res && sessions.length <= 1}
-          className="flex flex-col rounded-lg border border-[color:var(--color-line)] px-3 py-1.5 text-xs font-semibold text-[color:var(--color-muted)] transition-colors hover:border-[color:var(--color-danger)] hover:text-[color:var(--color-danger)] disabled:opacity-50"
-        >
-          <span>Hapus riwayat</span>
-          <span className="text-[10px] font-normal text-[color:var(--color-muted)]/70">Clear history</span>
-        </button>
 
         <div className="rounded-lg border border-[color:var(--color-warn-line)] bg-[color:var(--color-warn-bg)] px-3 py-2.5 text-[11px] leading-relaxed text-[color:var(--color-warn)]">
           Draft-only. SQL tidak pernah dieksekusi — periksa tabel, join, dan filter sebelum
