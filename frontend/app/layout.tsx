@@ -25,9 +25,9 @@ function SageMark() {
           <line x1="20" y1="20" x2="16" y2="16" />
         </svg>
       </div>
-      <div className="flex items-baseline gap-2 leading-tight">
-        <p className="text-[15px] font-semibold tracking-tight text-[color:var(--color-ink)]">Sage</p>
-        <p className="text-[11px] text-[color:var(--color-muted)]">BigData search &amp; generation</p>
+      <div className="flex flex-col leading-tight">
+        <p className="text-[28px] font-bold tracking-tight text-[color:var(--color-ink)]">sage</p>
+        <p className="text-[11px] text-[color:var(--color-muted)]">Data Generation &amp; Intelligence</p>
       </div>
     </div>
   );

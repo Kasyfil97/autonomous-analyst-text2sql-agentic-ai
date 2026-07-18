@@ -7,6 +7,10 @@ import { useDomains } from "@/lib/useDomains";
 import { TableCard } from "@/components/TableCard";
 import { useAppState } from "@/components/AppState";
 
+// Fetch up to 50 relevant tables (the backend caps at 50), shown 10 per page.
+const RESULT_LIMIT = 50;
+const PAGE_SIZE = 10;
+
 function Skeletons() {
   return (
     <div className="grid gap-3">
@@ -28,6 +32,8 @@ export function SearchPane({ onOpenTable }: { onOpenTable: (physicalName: string
   const domains = useDomains();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const listRef = useRef<HTMLDivElement | null>(null);
 
   // Emptying the query returns the pane to its initial state: clear the stored results (so the
   // cards disappear) and any error. A non-empty edit just updates the text.
@@ -51,7 +57,7 @@ export function SearchPane({ onOpenTable }: { onOpenTable: (physicalName: string
     setLoading(true);
     setError(null);
     try {
-      const result = await searchTables(query, dom);
+      const result = await searchTables(query, dom, RESULT_LIMIT);
       setSearch((s) => ({ ...s, res: result }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Pencarian gagal.");
@@ -91,6 +97,22 @@ export function SearchPane({ onOpenTable }: { onOpenTable: (physicalName: string
   }
 
   const cards = res?.results ?? [];
+
+  // Client-side pagination: 10 per page. Reset to page 1 whenever the result set changes (a new
+  // search, a facet re-run, or a clear). `res` identity only changes when we set new results, so
+  // typing in the box (which keeps the same `res`) won't reset the page.
+  useEffect(() => {
+    setPage(1);
+  }, [res]);
+
+  const totalPages = Math.max(1, Math.ceil(cards.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pageCards = cards.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  function goToPage(p: number) {
+    setPage(p);
+    listRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">
@@ -141,7 +163,7 @@ export function SearchPane({ onOpenTable }: { onOpenTable: (physicalName: string
         </div>
       </header>
 
-      <section className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+      <section ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
         {loading && <Skeletons />}
 
         {!loading && error && (
@@ -188,14 +210,81 @@ export function SearchPane({ onOpenTable }: { onOpenTable: (physicalName: string
           <div className="grid gap-3">
             <p className="text-xs text-[color:var(--color-muted)]">
               {cards.length} tabel · diurutkan berdasarkan relevansi
+              {totalPages > 1 && (
+                <span className="ml-1">
+                  · hal. {safePage} dari {totalPages}
+                </span>
+              )}
             </p>
-            {cards.map((c) => (
+            {pageCards.map((c) => (
               <TableCard key={c.id} card={c} onOpen={onOpenTable} onAsk={askAgent} atCap={atCap} />
             ))}
+            {totalPages > 1 && (
+              <Pagination page={safePage} totalPages={totalPages} onChange={goToPage} />
+            )}
           </div>
         )}
       </section>
     </div>
+  );
+}
+
+function Pagination({
+  page,
+  totalPages,
+  onChange,
+}: {
+  page: number;
+  totalPages: number;
+  onChange: (p: number) => void;
+}) {
+  const pages = Array.from({ length: totalPages }, (_, i) => i + 1);
+  const arrow =
+    "grid h-8 w-8 place-items-center rounded-lg border border-[color:var(--color-line)] text-sm text-[color:var(--color-muted)] transition-colors enabled:hover:border-[color:var(--color-accent)] enabled:hover:text-[color:var(--color-accent)] disabled:opacity-40";
+
+  return (
+    <nav
+      aria-label="Navigasi halaman hasil"
+      className="mt-2 flex items-center justify-center gap-1.5 pt-2"
+    >
+      <button
+        type="button"
+        aria-label="Halaman sebelumnya"
+        onClick={() => onChange(page - 1)}
+        disabled={page <= 1}
+        className={arrow}
+      >
+        ‹
+      </button>
+      {pages.map((p) => {
+        const active = p === page;
+        return (
+          <button
+            key={p}
+            type="button"
+            aria-current={active ? "page" : undefined}
+            onClick={() => onChange(p)}
+            className={[
+              "grid h-8 min-w-8 place-items-center rounded-lg px-2 text-sm font-semibold tabular-nums transition-colors",
+              active
+                ? "bg-[color:var(--color-accent-strong)] text-white"
+                : "border border-[color:var(--color-line)] text-[color:var(--color-muted)] hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)]",
+            ].join(" ")}
+          >
+            {p}
+          </button>
+        );
+      })}
+      <button
+        type="button"
+        aria-label="Halaman berikutnya"
+        onClick={() => onChange(page + 1)}
+        disabled={page >= totalPages}
+        className={arrow}
+      >
+        ›
+      </button>
+    </nav>
   );
 }
 
