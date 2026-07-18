@@ -20,7 +20,7 @@ Rules:
 
 Final answer: respond with ONLY a JSON object (no prose, no markdown fences) with EXACTLY these keys:
 {"sql": "<the SELECT query, or empty string if you cannot answer>",
- "explanation": "<1-3 sentence explanation; if no precedent was used, say so and advise verifying the logic>",
+ "explanation": "<2-4 bullet points, each on its own line starting with '- '. Cover: (1) what the query computes, (2) key filters / time window used, (3) join logic or aggregation grain if relevant, (4) if no precedent was used, say so and advise verifying the business logic>",
  "tables_used": ["..."],
  "columns_used": ["..."],
  "assumptions": ["<interpretation choices you made; empty list if none>"],

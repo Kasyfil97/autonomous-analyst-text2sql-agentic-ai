@@ -120,34 +120,50 @@ def test_apply_gates_allows_none_dialect_when_no_precedent_or_model(conn):
     assert out.sql.startswith(A.gates.UNVERIFIED_MARKER)
 
 
-def test_apply_gates_declines_table_never_retrieved(conn):
-    # model claims a table it never looked up -> accumulator authority declines
+# NOTE: gates are warn-don't-block since commit 7f3aff1 — a failing gate attaches a
+# severity-tagged warning and still returns the draft, rather than declining. (Reconciled in
+# Unit 3 of the BRISA plan; the only hard declines left are no-parseable-result and no-SQL.)
+
+def test_apply_gates_warns_table_never_retrieved(conn):
+    # model claims a table it never looked up -> accumulator authority warns (does not decline)
     ctx = FakeCtx(retrieved=set())  # nothing retrieved
     A._known_tables_cache = {"ghost"}
     r = Text2SQLResult(sql="SELECT x FROM ghost", dialect="SparkSQL")
     out = apply_gates(r, ctx, conn, ground_warn=True)
     A._known_tables_cache = None
-    assert out.declined and "never retrieved" in out.missing
+    assert not out.declined
+    assert any("never retrieved" in w for w in out.warnings)
 
 
-def test_apply_gates_declines_weak_schema_coverage(conn):
-    # precedent is advisory now; the schema floor is what still gates at the coverage layer
+def test_apply_gates_warns_weak_schema_coverage(conn):
+    # precedent is advisory now; a weak schema floor now warns rather than declining
     ctx = FakeCtx(era=0.8, schema=0.2, retrieved={"t"})
     r = Text2SQLResult(sql="SELECT 1 FROM t", dialect="SparkSQL")
     out = apply_gates(r, ctx, conn, ground_warn=True)
-    assert out.declined and "coverage" in out.missing
+    assert not out.declined
+    assert any("coverage" in w for w in out.warnings)
 
 
-def test_apply_gates_declines_unsafe_sql(conn):
+def test_apply_gates_warns_unsafe_sql(conn):
     ctx = FakeCtx(retrieved={"t"})
     A._known_tables_cache = {"t"}
     r = Text2SQLResult(sql="DROP TABLE t", dialect="SparkSQL")
     out = apply_gates(r, ctx, conn, ground_warn=True)
     A._known_tables_cache = None
-    assert out.declined and "unsafe_sql" in out.missing
+    assert not out.declined
+    assert any("unsafe_sql" in w for w in out.warnings)
 
 
-def test_apply_gates_no_sql_declines(conn):
+def test_apply_gates_no_sql_releases_with_warning(conn):
+    # Warn, don't block: a missing draft is released as a warned response, not a hard decline.
     ctx = FakeCtx(retrieved=set())
     out = apply_gates(Text2SQLResult(sql=None), ctx, conn)
-    assert out.declined
+    assert not out.declined
+    assert any("did not produce a SQL draft" in w for w in out.warnings)
+
+
+def test_apply_gates_model_self_decline_released_with_warning(conn):
+    ctx = FakeCtx(retrieved=set())
+    out = apply_gates(Text2SQLResult(declined=True, missing="no relevant tables"), ctx, conn)
+    assert not out.declined
+    assert any("low confidence" in w and "no relevant tables" in w for w in out.warnings)

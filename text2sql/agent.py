@@ -5,9 +5,11 @@ its draft. We parse that (JSON-from-final-text — chosen primary because forced
 structured-output forces a *single* tool call and would block the retrieval tools), then
 run the gates. The gates are authoritative but warn-don't-block: a failing gate attaches
 a severity-tagged warning to the result instead of declining, so the draft still reaches
-the human reviewer. The only hard declines left are *no parseable answer* and *no SQL at
-all* — there is nothing to return in those cases. The dialect is taken deterministically
-from the cited top ERA precedent's ``query_engine``.
+the human reviewer. This extends to the previously-hard declines too — a model self-decline
+or a missing/unparseable draft is now released as a warned response rather than blocked, so
+``generate_sql`` never returns ``declined=True``. The only intentional decline is the API
+endpoint's out-of-scope router fallback. The dialect is taken deterministically from the
+cited top ERA precedent's ``query_engine``.
 """
 from __future__ import annotations
 
@@ -26,7 +28,7 @@ from text2sql import gates
 from text2sql.audit_log import get_logger, new_request
 from text2sql.bedrock_model import Text2SqlBedrockModel
 from text2sql.prompt_loader import load_prompt
-from text2sql.tools import RetrievalContext, build_tools
+from text2sql.tools import RetrievalContext, build_tools, table_schema_text
 
 SYSTEM_PROMPT = load_prompt("system_prompt")
 
@@ -47,6 +49,12 @@ class Text2SQLResult(BaseModel):
     declined: bool = False
     missing: str | None = None
     warnings: list[str] = Field(default_factory=list)  # severity-tagged gate findings
+    # Sage (R13a): additive grounding/coverage signals for the UI. Default-empty so existing
+    # consumers (CLI) are unaffected; populated by apply_gates.
+    grounding: list[dict] = Field(default_factory=list)   # [{name, in_kb, retrieved}]
+    era_top_cosine: float | None = None
+    schema_top_cosine: float | None = None
+    grounding_strength: str | None = None                 # "precedent_strong" | "schema_only"
 
     @classmethod
     def decline(cls, reason: str) -> "Text2SQLResult":
@@ -69,6 +77,35 @@ def known_tables(conn) -> set:
                         "UNION SELECT table_name FROM schema_columns")
             _known_tables_cache = {r[0] for r in cur.fetchall() if r[0]}
     return _known_tables_cache
+
+
+def known_tables_by_lower(conn) -> dict:
+    """Map lowercased table name -> canonical catalog casing.
+
+    Single source for canonical-name resolution, shared by ``apply_gates`` (grounding chips) and
+    the API's attached-table resolver, so the lookup semantics stay in one place.
+    """
+    return {t.lower(): t for t in known_tables(conn)}
+
+
+def _seed_attached(ctx: RetrievalContext, attached_tables) -> str:
+    """Pre-fetch attached tables through the real retrieval path so they are grounded (R17a).
+
+    Returns their concatenated DDL for the prompt. Denylisted names are skipped. The table is
+    added to ``ctx.retrieved_tables`` explicitly because ``table_schema_text`` early-returns
+    without seeding when a table has no column dictionary — the attached table (already
+    catalog-validated by the caller) must still count as retrieved.
+    """
+    blocks = []
+    for name in attached_tables or []:
+        if (name or "").lower() in gates.TABLE_DENYLIST:
+            _log.warning("generate_sql | skipping denylisted attached table %r", name)
+            continue
+        blocks.append(table_schema_text(ctx, name))
+        ctx.retrieved_tables.add((name or "").lower())
+    if blocks:
+        _log.info("generate_sql | attached %d table(s) pre-seeded into retrieval context", len(blocks))
+    return "\n\n".join(blocks)
 
 
 def _extract_json(text: str) -> dict | None:
@@ -162,12 +199,21 @@ def apply_gates(result: Text2SQLResult, ctx: RetrievalContext, conn, *,
         sorted(ctx.retrieved_tables), len(ctx.calls),
     )
 
+    # Warn, don't block: a model self-decline or a missing draft is released as a warned response
+    # — not hidden behind a hard decline — so the analyst still sees the agent's reasoning. (The
+    # endpoint's out-of-scope router fallback is a separate, intentional decline.)
     if result.declined:
-        _log.info("apply_gates | skipped — result already declined by model")
-        return result
+        _log.info("apply_gates | model self-declined — releasing as a warning, not blocking")
+        result.warnings = list(result.warnings) + [
+            f"[HIGH] agent flagged low confidence: {result.missing or 'no reason given'}"]
+        result.declined = False
+        result.missing = None
     if not result.sql:
-        _log.warning("apply_gates | DECLINE — model produced no SQL field")
-        return Text2SQLResult.decline("model produced no SQL")
+        _log.warning("apply_gates | no SQL produced — releasing a warned response (not a decline)")
+        result.declined = False
+        result.warnings = list(result.warnings) + [
+            "[HIGH] the agent did not produce a SQL draft; review the interpretation and warnings above"]
+        return result
 
     # Dialect: a confident precedent's query_engine is authoritative; when no precedent
     # anchors it (schema-first path), fall back to the model's self-reported dialect and
@@ -204,6 +250,28 @@ def apply_gates(result: Text2SQLResult, ctx: RetrievalContext, conn, *,
             len(decision.referenced_tables),
         )
 
+    # R13a: per-table grounding status + coverage signals for the Sage UI. Comparisons are
+    # case-insensitive (retrieved_tables/known_tables use catalog case, the model writes its own),
+    # matching the accumulator above; the displayed name is pinned to the catalog casing so a table
+    # looks identical on a search card and an agent chip.
+    known_by_lower = known_tables_by_lower(conn)
+    era_c = ctx.era_top_cosine()
+    schema_c = ctx.schema_top_cosine()
+    result.grounding = [
+        {"name": known_by_lower.get(t.lower(), t),
+         "in_kb": t.lower() in known_by_lower,
+         "retrieved": t.lower() in retrieved_lower}
+        for t in sorted(decision.referenced_tables)
+    ]
+    result.era_top_cosine = era_c
+    result.schema_top_cosine = schema_c
+    # Mirrors gates.coverage_ok floors (ERA 0.45 advisory / schema 0.40 authoritative); never numeric.
+    result.grounding_strength = (
+        "precedent_strong" if era_c >= 0.45
+        else "schema_only" if schema_c >= 0.40
+        else None
+    )
+
     # Output scan: destructive SQL anywhere in the answer text -> warning (not a decline).
     clean, detail = gates.scan_output(f"{result.explanation or ''}\n{result.sql}")
     if not clean:
@@ -227,21 +295,57 @@ def apply_gates(result: Text2SQLResult, ctx: RetrievalContext, conn, *,
     return result
 
 
-def build_agent(session, ctx: RetrievalContext) -> Agent:
+def _to_messages(history) -> list[dict]:
+    """Convert a ``[{role, content}]`` chat history into Strands ``Message`` shape.
+
+    Only ``user``/``assistant`` roles with non-empty string content survive; each becomes a
+    single text content block. Bounded (last ``_MAX_HISTORY_TURNS`` turns, content clipped) so a
+    long conversation cannot blow the model context — the gates still re-run on every turn.
+    """
+    out: list[dict] = []
+    for h in history or []:
+        role = (h or {}).get("role")
+        content = (h or {}).get("content")
+        if role in ("user", "assistant") and isinstance(content, str) and content.strip():
+            out.append({"role": role, "content": [{"text": content[:_MAX_HISTORY_CHARS]}]})
+    return out[-_MAX_HISTORY_TURNS:]
+
+
+_MAX_HISTORY_TURNS = 30
+_MAX_HISTORY_CHARS = 8000
+
+
+def build_agent(session, ctx: RetrievalContext, history: list[dict] | None = None) -> Agent:
     model = Text2SqlBedrockModel(session, max_tokens=3072, temperature=0.0)
     return Agent(
         model=model,
+        messages=history or None,
         tools=build_tools(ctx),
         system_prompt=SYSTEM_PROMPT,
         conversation_manager=SlidingWindowConversationManager(),
     )
 
 
-def generate_sql(question: str, *, session=None, conn=None) -> Text2SQLResult:
-    """Turn a NL question into a gated draft SQL result (no execution)."""
+def generate_sql(question: str, *, session=None, conn=None,
+                 attached_tables=None, history=None) -> Text2SQLResult:
+    """Turn a NL question into a gated draft SQL result (no execution).
+
+    ``attached_tables`` (R17a) are table names the analyst attached via the Search→Agent
+    cross-link. They are pre-fetched through the **real** retrieval path (``table_schema_text``)
+    so they legitimately enter ``ctx.retrieved_tables`` (grounded), and their DDL is threaded into
+    the prompt so the model can actually use them. Denylisted names are skipped. Callers at the
+    API boundary re-resolve untrusted names against the catalog first; this is defense-in-depth.
+
+    ``history`` is the prior chat turns (``[{role, content}]``) for multi-turn conversations —
+    seeded into the agent so follow-ups ("change the year to 2024") have context. Each turn is a
+    fresh retrieval + gate pass over a fresh ``RetrievalContext``, so grounding is never inherited
+    from a prior turn; the model must re-retrieve tables it wants to reuse (attached tables the
+    caller carries forward keep it grounded without another lookup).
+    """
     rid = new_request()
     t0 = time.perf_counter()
-    _log.info("generate_sql START | request_id=%s  question=%r", rid, question[:120])
+    _log.info("generate_sql START | request_id=%s  question=%r  attached=%s  history_turns=%d",
+              rid, question[:120], attached_tables or [], len(history or []))
 
     own_conn = conn is None
     if own_conn:
@@ -249,10 +353,16 @@ def generate_sql(question: str, *, session=None, conn=None) -> Text2SQLResult:
     try:
         session = session or get_session()
         ctx = RetrievalContext(conn)
-        agent = build_agent(session, ctx)
+        agent = build_agent(session, ctx, _to_messages(history))
+
+        prompt = question
+        ddl = _seed_attached(ctx, attached_tables)
+        if ddl:
+            prompt = (f"{question}\n\n-- The analyst attached these table(s) for context; "
+                      f"prefer them when relevant:\n{ddl}")
 
         _log.info("agent_loop START | model=gpt-oss-120b  tools=search_era_knowledge,search_schema,get_table_schema")
-        raw = str(agent(question))
+        raw = str(agent(prompt))
         _log.info("agent_loop DONE  | raw_output_len=%d chars  tool_calls_made=%d", len(raw), len(ctx.calls))
 
         result = parse_result(raw)
