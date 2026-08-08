@@ -135,9 +135,18 @@ def _fetch_table_columns(conn, table_name: str) -> list[dict]:
         return [dict(zip(cols, r)) for r in cur.fetchall()]
 
 
-def _render_table_ddl(conn, table_name: str, description: str | None = None) -> str:
-    """Render a table as CREATE TABLE DDL + inline column comments (KD5)."""
+def _render_table_ddl(conn, table_name: str, description: str | None = None,
+                      *, ctx: "RetrievalContext | None" = None) -> str:
+    """Render a table as CREATE TABLE DDL + inline column comments (KD5).
+
+    When ``ctx`` is provided, the rendered columns are recorded into
+    ``ctx.retrieved_columns`` — so any column the model can see in the DDL counts as
+    retrieved for column-level grounding (single source: both ``search_schema`` and
+    ``get_table_schema`` go through here).
+    """
     columns = _fetch_table_columns(conn, table_name)
+    if ctx is not None and columns:
+        ctx.retrieved_columns.update(c["field_name"] for c in columns)
     lines = []
     if description:
         lines.append(f"-- {table_name}: {redact_note(description)}")
@@ -231,7 +240,7 @@ def schema_text(ctx: RetrievalContext, concept: str, limit: int = 4) -> str:
         tname = m.get("table_name") or r["id"]
         ctx.retrieved_tables.add(tname)
         table_names.append(tname)
-        blocks.append(_render_table_ddl(ctx.conn, tname, m.get("table_description")))
+        blocks.append(_render_table_ddl(ctx.conn, tname, m.get("table_description"), ctx=ctx))
 
     top_cosine = rows[0].get("dense_cosine") or 0.0
     _log.info(
@@ -257,13 +266,13 @@ def table_schema_text(ctx: RetrievalContext, table_name: str) -> str:
                 "(On the sample export some tables are absent / use tid<N> ids.)")
 
     ctx.retrieved_tables.add(table_name.lower())
-    ctx.retrieved_columns.update(c["field_name"] for c in columns)
     col_names = [c["field_name"] for c in columns]
     _log.info(
         "get_table_schema | table=%r  columns=%d  names=%s",
         table_name, len(columns), col_names,
     )
-    return _render_table_ddl(ctx.conn, table_name)
+    # ctx=ctx records retrieved_columns (single source in _render_table_ddl).
+    return _render_table_ddl(ctx.conn, table_name, ctx=ctx)
 
 
 # --------------------------------------------------------------------------

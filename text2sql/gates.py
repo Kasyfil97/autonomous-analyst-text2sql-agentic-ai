@@ -185,6 +185,36 @@ def _extract_identifiers(sql: str, dialect: str | None = None):
     return set(), set()
 
 
+def local_names(sql: str, dialect: str | None = None) -> set:
+    """Names the query *defines* itself — SELECT/derived-table aliases + CTE names.
+
+    These are not catalog columns, so column-level grounding must exclude them (a
+    ``SELECT SUM(x) AS total ... ORDER BY total`` references ``total`` as a column, but it
+    was invented by the query, never retrieved). Parse under the resolved dialect with the
+    ``spark`` fallback, mirroring ``_extract_identifiers``; return an empty set if wholly
+    unparseable so the caller degrades to a no-op exclusion rather than crashing.
+    """
+    glot = _sqlglot_dialect(dialect)
+    for read in (glot or "spark", "spark"):
+        try:
+            statements = [s for s in sqlglot.parse(sql, read=read) if s is not None]
+        except Exception:  # noqa: BLE001 — try the next dialect, else give up
+            continue
+        names: set[str] = set()
+        for s in statements:
+            # SELECT-list and derived-table output aliases (exp.Alias covers both).
+            names.update(a.alias for a in s.find_all(exp.Alias) if a.alias)
+            # CTE names plus any explicit CTE column list (WITH cte(a, b) AS ...).
+            for cte in s.find_all(exp.CTE):
+                if cte.alias:
+                    names.add(cte.alias)
+                ta = cte.args.get("alias")
+                if ta is not None:
+                    names.update(col.name for col in ta.columns if col.name)
+        return {n for n in names if n}
+    return set()
+
+
 # --------------------------------------------------------------------------
 # Grounding / policy / coverage
 # --------------------------------------------------------------------------

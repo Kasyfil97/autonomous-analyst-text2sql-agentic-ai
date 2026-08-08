@@ -31,12 +31,20 @@ def pg_config(readonly=False):
     path must use this so it can never write or reach ``era_tickets``. We deliberately
     raise rather than silently fall back to the superuser when the RO env is missing.
     Build/ingest scripts keep using the default (superuser) ``pg_config()``.
+
+    If ``PG_KB_SCHEMA`` is set (e.g. ``adhoc``), that schema is prepended to the
+    connection's ``search_path`` so unqualified references to ``schema_tables`` and
+    ``schema_columns`` resolve there first; ``era_knowledge`` (absent from that schema)
+    falls through to ``public`` automatically.
     """
     cfg = {
         "host": os.getenv("PG_HOST", "localhost"),
         "port": int(os.getenv("PG_PORT", "5433")),
         "dbname": os.getenv("PG_DBNAME", "postgres"),
     }
+    kb_schema = os.getenv("PG_KB_SCHEMA", "").strip()
+    if kb_schema and kb_schema != "public":
+        cfg["options"] = f"-c search_path={kb_schema},public"
     if readonly:
         ro_user = os.getenv("PG_RO_USER")
         if not ro_user:
