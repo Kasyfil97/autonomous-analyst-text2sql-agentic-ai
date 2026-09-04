@@ -114,18 +114,12 @@ def test_invoke_omits_tools_when_none():
 # pg_config(readonly=...)
 # --------------------------------------------------------------------------
 
-def test_pg_config_readonly_uses_ro_creds(monkeypatch):
-    monkeypatch.setenv("PG_RO_USER", "t2s_ro")
-    monkeypatch.setenv("PG_RO_PASSWORD", "secret")
+def test_pg_config_readonly_uses_pg_user(monkeypatch):
+    monkeypatch.setenv("PG_USER", "myuser")
+    monkeypatch.setenv("PG_PASSWORD", "mypass")
     cfg = pg_config(readonly=True)
-    assert cfg["user"] == "t2s_ro"
-    assert cfg["password"] == "secret"
-
-
-def test_pg_config_readonly_raises_when_missing(monkeypatch):
-    monkeypatch.delenv("PG_RO_USER", raising=False)
-    with pytest.raises(RuntimeError):
-        pg_config(readonly=True)
+    assert cfg["user"] == "myuser"
+    assert cfg["password"] == "mypass"
 
 
 def test_pg_config_default_is_superuser(monkeypatch):

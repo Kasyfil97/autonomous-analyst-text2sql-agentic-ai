@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+/* Sage design tokens — warm, calm data console (adopted from the Sage design).
+   Warm cream surface + a single terracotta accent; amber is reserved for the unverified-draft
+   state so it can never be confused with a validated query. Blue is links only. */
+@theme {
+  --color-bg: #eae6d9;          /* warm cream canvas */
+  --color-panel: #fffdf8;       /* card surface */
+  --color-panel-2: #f2eee2;     /* secondary surface / chips / skeletons */
+  --color-ink: #24211b;         /* primary text */
+  --color-muted: #5c5647;       /* muted text (taupe) */
+  --color-line: #e0d9c6;        /* borders / dividers */
+  --color-accent: #ed5421;      /* primary — decorative shapes (Sage/AI marks, chat bubble) */
+  --color-accent-strong: #d14a1d; /* darker accent — clickable filled buttons */
+  --color-accent-2: #4d62a7;    /* blue — links (desaturated) */
+  --color-warn: #79562f;        /* amber ink — unverified draft (desaturated) */
+  --color-warn-bg: #f2efe4;
+  --color-warn-line: #d0ba9b;
+  --color-danger: #8a3c36;
+  --color-ok: #627f65;
+  --color-code: #2e2c26;        /* warm-dark code surface */
+  --color-code-text: #f0eee6;   /* code text on the dark surface */
+  --color-code-muted: #a79e86;  /* code caption / secondary */
+
+  --font-sans: var(--font-instrument-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, "JetBrains Mono", Consolas, monospace;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(circle at top left, rgba(237, 84, 33, 0.06), transparent 32rem),
+    color-mix(in srgb, var(--color-bg) 20%, transparent);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "tnum" 1; /* tabular figures throughout */
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Desktop-only prototype (R28): show a below-min notice under 900px, hide the app. */
+.below-min {
+  display: none;
+}
+@media (max-width: 900px) {
+  .app-shell {
+    display: none;
+  }
+  .below-min {
+    display: grid;
+    place-items: center;
+    min-height: 100vh;
+    padding: 2rem;
+    text-align: center;
+    color: var(--color-muted);
+  }
+}

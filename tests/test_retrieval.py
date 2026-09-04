@@ -79,3 +79,11 @@ def test_results_carry_scores(conn):
     rows = R.hybrid_search("era_knowledge", "data transaksi teller", limit=5, conn=conn)
     assert rows and "score" in rows[0]
     assert R.top_dense_cosine(rows) > 0.0
+
+
+def test_era_corpus_3lane_returns_scored_rows(conn):
+    # Structural check (works on the partial 200-row subset and the full corpus alike):
+    # the 3-lane fusion returns RRF-scored rows with a usable coverage cosine.
+    rows = R.hybrid_search_era_corpus("data CIF nasabah retail terkini", limit=5, conn=conn)
+    assert rows and "score" in rows[0] and "bm25" in rows[0]
+    assert R.top_dense_cosine(rows) > 0.0

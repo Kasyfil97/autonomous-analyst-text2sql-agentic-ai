@@ -20,7 +20,7 @@ from strands import tool
 
 from text2sql.audit_log import get_logger
 from text2sql.prompt_loader import load_prompt
-from text2sql.retrieval import hybrid_search, top_dense_cosine
+from text2sql.retrieval import hybrid_search, hybrid_search_era_corpus, top_dense_cosine
 
 _log = get_logger("tools")
 
@@ -101,7 +101,7 @@ class RetrievalContext:
         })
 
     def era_top_cosine(self) -> float:
-        vals = [c["top_cosine"] for c in self.calls if c["kb"] == "era_knowledge"]
+        vals = [c["top_cosine"] for c in self.calls if c["kb"] == "era_corpus"]
         return max(vals) if vals else 0.0
 
     def schema_top_cosine(self) -> float:
@@ -119,9 +119,9 @@ def _fetch_era_payloads(conn, ids: list[str]) -> dict[str, dict]:
         return {}
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT id, query_type, query_engine, tables, key_filters, report_codes, "
-            "analyst_notes, sql_query, intent_text "
-            "FROM era_knowledge WHERE id = ANY(%s)", (ids,))
+            "SELECT id, solution_source, query_engine, tables, key_filters, report_codes, "
+            "analyst_notes, solution, canonical_need, has_solution, domain_tags "
+            "FROM era_corpus WHERE id = ANY(%s)", (ids,))
         cols = [c.name for c in cur.description]
         return {r[0]: dict(zip(cols, r)) for r in cur.fetchall()}
 
@@ -135,9 +135,18 @@ def _fetch_table_columns(conn, table_name: str) -> list[dict]:
         return [dict(zip(cols, r)) for r in cur.fetchall()]
 
 
-def _render_table_ddl(conn, table_name: str, description: str | None = None) -> str:
-    """Render a table as CREATE TABLE DDL + inline column comments (KD5)."""
+def _render_table_ddl(conn, table_name: str, description: str | None = None,
+                      *, ctx: "RetrievalContext | None" = None) -> str:
+    """Render a table as CREATE TABLE DDL + inline column comments (KD5).
+
+    When ``ctx`` is provided, the rendered columns are recorded into
+    ``ctx.retrieved_columns`` — so any column the model can see in the DDL counts as
+    retrieved for column-level grounding (single source: both ``search_schema`` and
+    ``get_table_schema`` go through here).
+    """
     columns = _fetch_table_columns(conn, table_name)
+    if ctx is not None and columns:
+        ctx.retrieved_columns.update(c["field_name"] for c in columns)
     lines = []
     if description:
         lines.append(f"-- {table_name}: {redact_note(description)}")
@@ -161,14 +170,14 @@ def _render_table_ddl(conn, table_name: str, description: str | None = None) -> 
 def era_knowledge_text(ctx: RetrievalContext, question: str, limit: int = 5) -> str:
     _log.info("search_era_knowledge | question=%r  limit=%d", question[:100], limit)
 
-    rows = hybrid_search("era_knowledge", question, limit=limit, conn=ctx.conn)
-    ctx.record("era_knowledge", question, rows)
+    rows = hybrid_search_era_corpus(question, limit=limit, conn=ctx.conn)
+    ctx.record("era_corpus", question, rows)
     payloads = _fetch_era_payloads(ctx.conn, [r["id"] for r in rows])
 
     if not rows:
         _log.warning(
             "search_era_knowledge | NO RESULTS — era_top_cosine=0.0"
-            " → coverage gate will DECLINE (floor=0.45)"
+            " → precedent is advisory; agent proceeds schema-first"
         )
         return "No matching ERA precedents found."
 
@@ -180,11 +189,12 @@ def era_knowledge_text(ctx: RetrievalContext, question: str, limit: int = 5) -> 
         all_tables.extend(p.get("tables") or [])
         tables = ", ".join(p.get("tables") or []) or "—"
         kfs = ", ".join(p.get("key_filters") or []) or "—"
-        header = (f"### Precedent {r['id']}  (type: {p.get('query_type','?')}, "
-                  f"engine: {p.get('query_engine','?')})\n"
+        solved = "yes" if p.get("has_solution") else "no (partial/notes only)"
+        header = (f"### Precedent {r['id']}  (source: {p.get('solution_source','?')}, "
+                  f"engine: {p.get('query_engine') or '?'}, has_solution: {solved})\n"
                   f"Tables: {tables}\nKey filters: {kfs}")
         notes = redact_note(p.get("analyst_notes") or "")
-        sql = redact_sql(p.get("sql_query") or "")
+        sql = redact_sql(p.get("solution") or "")
         parts = [header]
         if notes.strip():
             parts.append("Analyst notes:\n" + _fence(f"{r['id']}:notes", notes))
@@ -231,7 +241,7 @@ def schema_text(ctx: RetrievalContext, concept: str, limit: int = 4) -> str:
         tname = m.get("table_name") or r["id"]
         ctx.retrieved_tables.add(tname)
         table_names.append(tname)
-        blocks.append(_render_table_ddl(ctx.conn, tname, m.get("table_description")))
+        blocks.append(_render_table_ddl(ctx.conn, tname, m.get("table_description"), ctx=ctx))
 
     top_cosine = rows[0].get("dense_cosine") or 0.0
     _log.info(
@@ -257,13 +267,13 @@ def table_schema_text(ctx: RetrievalContext, table_name: str) -> str:
                 "(On the sample export some tables are absent / use tid<N> ids.)")
 
     ctx.retrieved_tables.add(table_name.lower())
-    ctx.retrieved_columns.update(c["field_name"] for c in columns)
     col_names = [c["field_name"] for c in columns]
     _log.info(
         "get_table_schema | table=%r  columns=%d  names=%s",
         table_name, len(columns), col_names,
     )
-    return _render_table_ddl(ctx.conn, table_name)
+    # ctx=ctx records retrieved_columns (single source in _render_table_ddl).
+    return _render_table_ddl(ctx.conn, table_name, ctx=ctx)
 
 
 # --------------------------------------------------------------------------

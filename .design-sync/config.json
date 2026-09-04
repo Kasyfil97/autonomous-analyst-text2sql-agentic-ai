@@ -1,0 +1,21 @@
+{
+  "pkg": "frontend",
+  "globalName": "Sage",
+  "projectId": "cc049f67-bf94-4666-9370-a0ee2b5208d2",
+  "shape": "package",
+  "entry": "./frontend/.ds-entry.tsx",
+  "srcDir": "components",
+  "tsconfig": ".ds-tsconfig.json",
+  "cssEntry": ".ds-styles.css",
+  "runtimeFontPrefixes": ["JetBrains Mono"],
+  "readmeHeader": ".design-sync/conventions.md",
+  "componentSrcMap": {
+    "SessionsRail": "components/SessionsRail.tsx",
+    "SearchPane": "components/SearchPane.tsx",
+    "AgentPane": "components/AgentPane.tsx",
+    "TableDetailPanel": "components/TableDetailPanel.tsx",
+    "SqlBlock": "components/SqlBlock.tsx",
+    "TableCard": "components/TableCard.tsx",
+    "AppStateProvider": "components/AppState.tsx"
+  }
+}

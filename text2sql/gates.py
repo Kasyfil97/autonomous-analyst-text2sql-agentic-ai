@@ -54,6 +54,21 @@ RESTRICTED_FRAGMENTS = {
     "rekening", "no_rek", "norek", "account_no", "acct_no",
 }
 
+def restricted_fragment(name: str | None) -> str | None:
+    """Return the first PII/PCI fragment a column name matches, else None.
+
+    Single source for the fragment heuristic — consumed by ``policy_ok`` (agent path) and the
+    Sage search-surface PII badge (R4a/R5a), so the two read paths cannot drift.
+    """
+    low = (name or "").lower()
+    return next((frag for frag in RESTRICTED_FRAGMENTS if frag in low), None)
+
+
+def restricted_columns(columns) -> set:
+    """Subset of column names that hit the PII/PCI fragment heuristic."""
+    return {c for c in columns if restricted_fragment(c)}
+
+
 # Forbidden statement node types (build dynamically — names vary across sqlglot versions).
 _FORBIDDEN_NAMES = ("Insert", "Update", "Delete", "Merge", "Create", "Drop", "Alter",
                     "Command", "Set", "Copy", "TruncateTable", "Grant")
@@ -170,6 +185,36 @@ def _extract_identifiers(sql: str, dialect: str | None = None):
     return set(), set()
 
 
+def local_names(sql: str, dialect: str | None = None) -> set:
+    """Names the query *defines* itself — SELECT/derived-table aliases + CTE names.
+
+    These are not catalog columns, so column-level grounding must exclude them (a
+    ``SELECT SUM(x) AS total ... ORDER BY total`` references ``total`` as a column, but it
+    was invented by the query, never retrieved). Parse under the resolved dialect with the
+    ``spark`` fallback, mirroring ``_extract_identifiers``; return an empty set if wholly
+    unparseable so the caller degrades to a no-op exclusion rather than crashing.
+    """
+    glot = _sqlglot_dialect(dialect)
+    for read in (glot or "spark", "spark"):
+        try:
+            statements = [s for s in sqlglot.parse(sql, read=read) if s is not None]
+        except Exception:  # noqa: BLE001 — try the next dialect, else give up
+            continue
+        names: set[str] = set()
+        for s in statements:
+            # SELECT-list and derived-table output aliases (exp.Alias covers both).
+            names.update(a.alias for a in s.find_all(exp.Alias) if a.alias)
+            # CTE names plus any explicit CTE column list (WITH cte(a, b) AS ...).
+            for cte in s.find_all(exp.CTE):
+                if cte.alias:
+                    names.add(cte.alias)
+                ta = cte.args.get("alias")
+                if ta is not None:
+                    names.update(col.name for col in ta.columns if col.name)
+        return {n for n in names if n}
+    return set()
+
+
 # --------------------------------------------------------------------------
 # Grounding / policy / coverage
 # --------------------------------------------------------------------------
@@ -224,8 +269,8 @@ def policy_ok(referenced_tables, referenced_columns, *,
             detail = f"restricted column: {col}"
             _log.warning("policy_ok | FAIL — %s  reason: column is in R13 restricted list", detail)
             return False, detail
-        if any(frag in low for frag in RESTRICTED_FRAGMENTS):
-            matched = next(f for f in RESTRICTED_FRAGMENTS if f in low)
+        matched = restricted_fragment(col)
+        if matched:
             detail = f"restricted (PII) column: {col}"
             _log.warning(
                 "policy_ok | FAIL — %s  reason: name fragment %r matches PII heuristic",
@@ -367,11 +412,19 @@ def decide(sql, dialect, *, era_top_cosine, schema_top_cosine, known_tables,
     )
     warnings: list[str] = []
 
-    # Gate 1: coverage (numeric threshold — low severity; precedent already advisory)
+    # Gate 1: coverage (numeric threshold — low severity; precedent already advisory).
+    # Case C escalation: weak schema AND no confident precedent means the draft rests on
+    # uncertain table/column names — surface a firmer, non-blocking clarification cue.
     cov_ok, cov_detail = coverage_ok(era_top_cosine, schema_top_cosine,
                                      era_floor=era_floor, schema_floor=schema_floor)
     if not cov_ok:
-        warnings.append(f"[LOW] coverage: {cov_detail}")
+        if era_top_cosine < era_floor:
+            warnings.append(
+                f"[HIGH] needs clarification: {cov_detail} and no confident precedent "
+                f"(era cosine {era_top_cosine:.3f} < {era_floor}) — verify the tables/columns "
+                "or refine the request before relying on this draft")
+        else:
+            warnings.append(f"[LOW] coverage: {cov_detail}")
 
     # Gate 2: SQL safety. On failure, recover identifiers best-effort so the policy and
     # grounding gates can still inspect the draft.
