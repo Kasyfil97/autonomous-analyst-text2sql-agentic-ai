@@ -47,6 +47,13 @@ def pg_config(readonly=False):
             )
         cfg["user"] = ro_user
         cfg["password"] = os.getenv("PG_RO_PASSWORD", "")
+        # Runtime KB now lives in a single schema (default: ``public``) holding both the
+        # ERA-precedent tables and the schema catalog, plus the pgvector extension. The
+        # agent references tables unqualified and casts ``::vector`` / ``::sparsevec``
+        # unqualified, so both resolve via search_path. Driven by PG_KB_SCHEMA.
+        kb_schema = os.getenv("PG_KB_SCHEMA", "public").strip()
+        if kb_schema:
+            cfg["options"] = f"-c search_path={kb_schema}"
     else:
         cfg["user"] = os.getenv("PG_USER", "postgres")
         cfg["password"] = os.getenv("PG_PASSWORD", "postgres")
