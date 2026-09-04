@@ -71,10 +71,11 @@ def _dense_literal(vec) -> str:
 
 
 # Only these KB tables may be searched — guards the f-string table interpolation.
-ALLOWED_KBS = {"era_knowledge", "schema_tables", "schema_columns"}
+ALLOWED_KBS = {"era_knowledge", "era_corpus", "schema_tables", "schema_columns"}
 
 
-def hybrid_search(kb: str, question: str, *, limit: int = 10, pool: int = 50, conn=None):
+def hybrid_search(kb: str, question: str, *, limit: int = 10, pool: int = 50, conn=None,
+                  table_filter: str | None = None):
     """Hybrid-retrieve from ``kb`` and return ranked rows.
 
     Returns a list of dicts ``{id, score (RRF), dense_cosine, bm25}`` ordered by RRF
@@ -83,6 +84,12 @@ def hybrid_search(kb: str, question: str, *, limit: int = 10, pool: int = 50, co
 
     ``kb`` must be one of ``ALLOWED_KBS`` (it is f-string-interpolated into the query);
     no free-text predicate is accepted, so no caller can inject SQL here.
+
+    ``table_filter`` (only meaningful for the schema KBs, which carry a ``table_name``
+    column) scopes BOTH lanes to a single table *before* ranking — a filter-then-rank
+    search that returns the most similar rows WITHIN that table. It is bound as a query
+    parameter (never interpolated), so it is injection-safe; the ``table_name`` column
+    name is a fixed literal, not caller input.
     """
     if kb not in ALLOWED_KBS:
         raise ValueError(f"unknown KB: {kb!r}")
@@ -115,16 +122,26 @@ def hybrid_search(kb: str, question: str, *, limit: int = 10, pool: int = 50, co
 
         qs = encode_query_sparse(question, vocab, idf, dim)
 
+        # Optional single-table scope (schema KBs only). Bound as %(tf)s — never interpolated —
+        # and applied to both lanes so ranking happens within the table, not across the corpus.
+        params = {"qd": qd, "qs": qs, "pool": pool, "limit": limit}
+        where_sql = ""
+        if table_filter:
+            where_sql = "WHERE lower(table_name) = %(tf)s"
+            params["tf"] = table_filter.lower()
+
         sql = f"""
         WITH d AS (
             SELECT id, row_number() OVER (ORDER BY dense <=> %(qd)s::vector) AS rk,
                    1 - (dense <=> %(qd)s::vector) AS cosine
             FROM {kb}
+            {where_sql}
             ORDER BY dense <=> %(qd)s::vector LIMIT %(pool)s),
         s AS (
             SELECT id, row_number() OVER (ORDER BY sparse::sparsevec <#> %(qs)s::sparsevec) AS rk,
                    -(sparse::sparsevec <#> %(qs)s::sparsevec) AS bm25
             FROM {kb}
+            {where_sql}
             ORDER BY sparse::sparsevec <#> %(qs)s::sparsevec LIMIT %(pool)s)
         SELECT COALESCE(d.id, s.id) AS id,
                COALESCE(1.0/(60+d.rk), 0) + COALESCE(1.0/(60+s.rk), 0) AS score,
@@ -134,7 +151,7 @@ def hybrid_search(kb: str, question: str, *, limit: int = 10, pool: int = 50, co
         ORDER BY score DESC LIMIT %(limit)s;
         """
         with conn.cursor() as cur:
-            cur.execute(sql, {"qd": qd, "qs": qs, "pool": pool, "limit": limit})
+            cur.execute(sql, params)
             cols = [c.name for c in cur.description]
             rows = [dict(zip(cols, r)) for r in cur.fetchall()]
 
@@ -157,6 +174,68 @@ def hybrid_search(kb: str, question: str, *, limit: int = 10, pool: int = 50, co
                 kb, elapsed,
             )
 
+        return rows
+    finally:
+        if own_conn:
+            conn.close()
+
+
+def hybrid_search_era_corpus(question: str, *, limit: int = 5, pool: int = 50, conn=None):
+    """3-lane hybrid retrieval over ``era_corpus`` (plan rec #4).
+
+    Lanes: (1) main dense (``canonical_need``), (2) main sparse (BM25 of ``search_text``),
+    (3) the best synthetic-question vector per ticket (``era_corpus_qvec``, collapsed by
+    ``issue_key`` before ranking). Fused with RRF (k=60). Returns the same row shape as
+    ``hybrid_search`` — ``{id, score, dense_cosine, bm25}`` — so ``RetrievalContext.record``
+    and the coverage signal work unchanged; ``dense_cosine`` is the best of the main-dense
+    and synthetic-question cosine so a ticket found only via a paraphrase still scores its
+    true semantic match.
+    """
+    _log.info("START  | kb=era_corpus (3-lane)  limit=%d  question=%r", limit, question[:100])
+    t0 = time.perf_counter()
+
+    own_conn = conn is None
+    if own_conn:
+        conn = psycopg2.connect(**pg_config(readonly=True))
+    try:
+        vocab, idf, dim = _load_vocab(conn, "era_corpus")
+        qd = _dense_literal(embed_one(question))
+        qs = encode_query_sparse(question, vocab, idf, dim)
+
+        sql = """
+        WITH d AS (
+            SELECT id, row_number() OVER (ORDER BY dense <=> %(qd)s::vector) rk,
+                   1 - (dense <=> %(qd)s::vector) cosine
+            FROM era_corpus ORDER BY dense <=> %(qd)s::vector LIMIT %(pool)s),
+        s AS (
+            SELECT id, row_number() OVER (ORDER BY sparse::sparsevec <#> %(qs)s::sparsevec) rk,
+                   -(sparse::sparsevec <#> %(qs)s::sparsevec) bm25
+            FROM era_corpus ORDER BY sparse::sparsevec <#> %(qs)s::sparsevec LIMIT %(pool)s),
+        q AS (
+            SELECT issue_key AS id, min(dense <=> %(qd)s::vector) AS dist
+            FROM era_corpus_qvec GROUP BY issue_key ORDER BY dist LIMIT %(pool)s),
+        qr AS (SELECT id, row_number() OVER (ORDER BY dist) rk, 1 - dist AS qcos FROM q)
+        SELECT COALESCE(d.id, s.id, qr.id) AS id,
+               COALESCE(1.0/(60+d.rk),0) + COALESCE(1.0/(60+s.rk),0)
+                 + COALESCE(1.0/(60+qr.rk),0) AS score,
+               GREATEST(COALESCE(d.cosine,0), COALESCE(qr.qcos,0)) AS dense_cosine,
+               s.bm25 AS bm25
+        FROM d FULL OUTER JOIN s ON d.id = s.id
+               FULL OUTER JOIN qr ON COALESCE(d.id, s.id) = qr.id
+        ORDER BY score DESC LIMIT %(limit)s;
+        """
+        with conn.cursor() as cur:
+            cur.execute(sql, {"qd": qd, "qs": qs, "pool": pool, "limit": limit})
+            cols = [c.name for c in cur.description]
+            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+
+        elapsed = time.perf_counter() - t0
+        if rows:
+            _log.info("DONE   | kb=era_corpus rows=%d  top_cosine=%.3f  top_rrf=%.4f  elapsed=%.3fs",
+                      len(rows), rows[0].get("dense_cosine") or 0.0,
+                      rows[0].get("score") or 0.0, elapsed)
+        else:
+            _log.warning("DONE   | kb=era_corpus rows=0  elapsed=%.3fs", elapsed)
         return rows
     finally:
         if own_conn:

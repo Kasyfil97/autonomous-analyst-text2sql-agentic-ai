@@ -2,8 +2,9 @@
 
 An agent that turns a natural-language question (Indonesian or English) into a **draft
 SQL query** or a **prose KB answer** — it does **not** execute SQL. Answers are grounded
-in two Postgres knowledge bases (see [`RETRIEVAL.md`](RETRIEVAL.md)): ERA ticket
-precedents and the datalake schema catalog. Built on the
+in two Postgres knowledge bases: ERA ticket precedents (`era_corpus`, see
+[`RETRIEVAL_V2.md`](RETRIEVAL_V2.md)) and the datalake schema catalog
+([`RETRIEVAL.md`](RETRIEVAL.md)). Built on the
 [Strands Agents SDK](https://strandsagents.com) driving **gpt-oss-120b on AWS Bedrock**
 through a federated OIDC session.
 
@@ -11,16 +12,22 @@ through a federated OIDC session.
 
 ```
 question ─▶ Orchestrator (forced tool-call intent router)
-              ├─ intent=sql    ─▶ Text2SQL agent (Strands, gpt-oss-120b)
-              │                     ├─ search_era_knowledge   (precedent SQL + notes)
-              │                     ├─ search_schema          (candidate tables/columns, DDL)
-              │                     └─ get_table_schema       (authoritative column dict)
-              │                   ─▶ JSON draft ─▶ gates (coverage · SELECT-only · grounding · policy · scan)
-              │                   ─▶ SQL + warnings + assumptions + sources + dialect
+              ├─ intent=sql    ─▶ decompose_request  (split a multi-part opening turn into sub-needs)
+              │                     └─ per sub-need ─▶ Text2SQL agent (Strands, gpt-oss-120b)
+              │                          ├─ search_era_knowledge  (era_corpus: 3-lane dense+sparse+qvec)
+              │                          ├─ search_schema         (candidate tables/columns, DDL)
+              │                          └─ get_table_schema      (authoritative column dict)
+              │                        ─▶ JSON draft ─▶ gates (coverage · SELECT-only · grounding · policy · scan)
+              │                     └─ reconcile  (when >1 sub-need: join keys, unified filters, dialect)
+              │                   ─▶ Text2SQLResult (single) | MultiDraftResult (multi):
+              │                        SQL + warnings + assumptions + sources + dialect
               ├─ intent=search ─▶ Search agent (same tools, prose output)
               │                   ─▶ grounded KB answer + source tables/ERA IDs + warnings
               └─ intent=other  ─▶ bilingual out-of-scope message (no sub-agent invoked)
 ```
+
+Tool search queries are issued in **Bahasa Indonesia** (the KB is indexed in Indonesian);
+a single-part request skips decomposition/reconciliation (fast path, identical to before).
 
 The model never reaches a SQL execution path; retrieved content is treated as untrusted
 and PII-redacted before it enters the prompt. Gates are **warn-don't-block**: a failing
@@ -72,7 +79,7 @@ network-restricted host) and `SAGE_FRONTEND_ORIGIN` (exact CORS origin, default
 ## Tests
 
 ```bash
-pytest                              # unit + live-KB integration (80 tests)
+pytest                              # unit + live-KB integration
 python tests/smoke_live_tool.py     # U2.5 live gate: gpt-oss tool-calling via Bedrock
 ```
 
@@ -80,12 +87,16 @@ python tests/smoke_live_tool.py     # U2.5 live gate: gpt-oss tool-calling via B
 
 | File | Purpose |
 |---|---|
-| `text2sql/orchestrator.py` | Intent router — forced tool-call classification → sql / search / other |
-| `text2sql/agent.py` | Text2SQL sub-agent: Strands loop + `parse_result()` + `apply_gates()` |
+| `text2sql/orchestrator.py` | Intent router (sql/search/other) + `generate_sql_orchestrated` (decompose → per-sub-need → reconcile) |
+| `text2sql/decompose.py` | Forced-tool-call split of a request into sub-needs (fallback = single) |
+| `text2sql/reconcile.py` | Combine sub-drafts (join/filter/dialect resolution) into a `MultiDraftResult` |
+| `text2sql/agent.py` | Text2SQL sub-agent: `generate_sql` + `parse_result` + `apply_gates`; `Text2SQLResult`/`MultiDraftResult` |
 | `text2sql/search_agent.py` | Search sub-agent: KB-exploration questions answered in prose |
 | `text2sql/gates.py` | Safety gates (warn-don't-block): SQL validation, grounding, policy, coverage, output scan |
-| `text2sql/tools.py` | Three `@tool` functions; `RetrievalContext`; PII redaction |
-| `text2sql/retrieval.py` | Hybrid dense + sparse BM25 RRF retrieval over KB tables |
+| `text2sql/tools.py` | Three `@tool` functions (ERA tool reads `era_corpus`); `RetrievalContext`; PII redaction |
+| `text2sql/retrieval.py` | Hybrid RRF retrieval; `hybrid_search` + `hybrid_search_era_corpus` (3-lane) |
+| `text2sql/api.py` / `api_serializers.py` | Sage FastAPI backend + result→JSON (single & multi-draft) |
+| `preprocessing/` | Offline KB build (`build_era_embedding_corpus.py`, `embed_and_ingest_corpus.py`) + `*.sql` DDL |
 | `text2sql/bedrock_model.py` | Custom `Strands.Model` for gpt-oss (ConverseStream workaround) |
 | `text2sql/audit_log.py` | Per-request structured logger; request IDs via contextvars |
 | `text2sql/prompt_loader.py` | Loads named prompts from `prompts/prompts.md` (parsed once, cached) |

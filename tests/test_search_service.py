@@ -25,12 +25,15 @@ def test_humanize_strips_prefixes():
     assert S.humanize("dim_branch_jbr") == "Dim Branch Jbr"
 
 
-def test_search_returns_scoreless_cards(conn):
+def test_search_returns_cards_with_scores(conn):
     out = S.search_tables(conn, "transaksi kartu kredit nasabah", limit=5)
     assert out["results"], "expected relevant tables for a credit-card query"
     for card in out["results"]:
-        # R6: no numeric relevance signal in the payload
-        assert not ({"score", "dense_cosine", "bm25"} & set(card))
+        # Relevance signals are exposed (supersedes R6); raw bm25/dense_cosine keys are not.
+        assert "relevance" in card and "score" in card
+        assert not ({"dense_cosine", "bm25"} & set(card))
+        assert card["relevance"] is None or 0.0 <= card["relevance"] <= 1.0
+        assert isinstance(card["score"], (int, float))
         assert card["headline"] and card["physical_name"]
         assert card["pii"] in ("present", "unclassified")  # R5a: never a bare 'safe'
 
@@ -64,6 +67,44 @@ def test_table_columns_shape_and_pii_flag(conn):
     for col in cols:
         assert {"field_name", "business_title", "description", "data_type", "pii"} <= set(col)
         assert isinstance(col["pii"], bool)
+
+
+def test_search_columns_semantic_returns_column_cards_with_scores(conn):
+    out = S.search_columns_semantic(conn, "nomor kartu kredit nasabah", limit=5)
+    assert out["results"], "expected relevant columns for a credit-card query"
+    for card in out["results"]:
+        assert not ({"dense_cosine", "bm25"} & set(card))  # raw lane scores stay internal
+        assert {"field_name", "table_name", "physical_name", "business_title", "description",
+                "data_type", "domain_tags", "pii", "relevance", "score"} <= set(card)
+        assert card["relevance"] is None or 0.0 <= card["relevance"] <= 1.0
+        assert isinstance(card["score"], (int, float))
+        assert isinstance(card["pii"], bool)
+
+
+def test_search_columns_semantic_empty_query(conn):
+    assert S.search_columns_semantic(conn, "   ", limit=5)["results"] == []
+
+
+def test_search_columns_semantic_table_filter_scopes_results(conn):
+    # Discover a real table from an unfiltered pass, then re-run scoped to it. Filter-then-rank
+    # means a valid table always returns its own columns — never emptied by ranking.
+    seed = S.search_columns_semantic(conn, "nasabah alamat email telepon", limit=10)
+    assert seed["results"], "expected a seed result to derive a table filter"
+    table = seed["results"][0]["table_name"]
+    out = S.search_columns_semantic(conn, "nasabah alamat email telepon", table=table, limit=10)
+    assert out["results"], "a scoped search on a valid table must return that table's columns"
+    assert all(c["table_name"].lower() == table.lower() for c in out["results"])
+
+
+def test_search_columns_semantic_unknown_table_returns_empty(conn):
+    out = S.search_columns_semantic(conn, "nasabah alamat", table="no_such_table_xyz", limit=10)
+    assert out["results"] == []
+
+
+def test_search_columns_semantic_denylisted_tables_never_returned(conn):
+    out = S.search_columns_semantic(conn, "era ticket knowledge precedent", limit=25)
+    returned = {c["table_name"].lower() for c in out["results"]}
+    assert not (returned & gates.TABLE_DENYLIST)
 
 
 def test_list_domains(conn):

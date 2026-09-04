@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import sys
 
-from text2sql.agent import Text2SQLResult, get_session
+from text2sql.agent import MultiDraftResult, Text2SQLResult, get_session
 from text2sql.audit_log import get_logger
 from text2sql.orchestrator import handle as orchestrate
 from text2sql.search_agent import SearchResult
@@ -33,7 +33,29 @@ def format_search_result(r: SearchResult) -> str:
     return "\n".join(lines)
 
 
-def format_result(r: Text2SQLResult | SearchResult) -> str:
+def format_multidraft_result(r: MultiDraftResult) -> str:
+    """Render a decomposed multi-part answer: each sub-draft via the single-draft
+    formatter, then the reconciliation + any combined SQL and cross-draft warnings."""
+    lines = ["", f"MULTI-PART REQUEST — {len(r.sub_drafts)} sub-draft(s)"]
+    for i, sd in enumerate(r.sub_drafts, 1):
+        lines.append("\n" + "=" * 56)
+        lines.append(f"[{i}] {sd.sub_need}")
+        lines.append(format_result(sd.result).rstrip())
+    if r.reconciliation:
+        lines.append("\n" + "=" * 56)
+        lines.append("RECONCILIATION:\n" + r.reconciliation)
+    if r.combined_sql:
+        lines.append(f"\nCombined SQL (suggestion — verify):\n{r.combined_sql}")
+    if r.warnings:
+        lines.append("\n⚠️  CROSS-DRAFT WARNINGS:")
+        lines.extend(f"  ⚠️  {w}" for w in r.warnings)
+    lines.append("")
+    return "\n".join(lines)
+
+
+def format_result(r: Text2SQLResult | SearchResult | MultiDraftResult) -> str:
+    if isinstance(r, MultiDraftResult):
+        return format_multidraft_result(r)
     if isinstance(r, SearchResult):
         return format_search_result(r)
     if r.declined:
@@ -82,6 +104,8 @@ def run_repl(generate=orchestrate, in_fn=input, out=print) -> None:
             _log.warning("question DECLINED | reason=%r", result.missing)
         elif isinstance(result, SearchResult):
             _log.info("question ANSWERED (search) | found=%s  sources=%s", result.found, result.sources)
+        elif isinstance(result, MultiDraftResult):
+            _log.info("question ANSWERED (multi) | sub_drafts=%d", len(result.sub_drafts))
         else:
             _log.info("question ANSWERED | dialect=%r  tables=%s", result.dialect, result.tables_used)
         out(format_result(result))

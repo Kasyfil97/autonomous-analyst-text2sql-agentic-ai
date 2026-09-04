@@ -33,25 +33,35 @@ def client(monkeypatch):
         captured.update(q=q, domain=domain, limit=limit)
         return {"query": q, "domain": domain,
                 "results": [{"headline": "Kartu Kredit", "physical_name": "datalake.x",
-                             "pii": "unclassified"}],
+                             "pii": "unclassified", "relevance": 0.82, "score": 0.0312}],
+                "filter_caused_empty": False}
+
+    def fake_search_columns_semantic(conn, q, table=None, domain=None, limit=10):
+        captured.update(cq=q, ctable=table, cdomain=domain, climit=limit)
+        return {"query": q, "table": table, "domain": domain,
+                "results": [{"field_name": "card_no", "table_name": "tx",
+                             "physical_name": "datalake.tx.card_no", "pii": True,
+                             "relevance": 0.77, "score": 0.0290}],
                 "filter_caused_empty": False}
 
     monkeypatch.setattr(api._search, "search_tables", fake_search)
     monkeypatch.setattr(api._search, "table_columns",
                         lambda conn, t: [{"field_name": "address", "pii": True}])
+    monkeypatch.setattr(api._search, "search_columns_semantic", fake_search_columns_semantic)
     monkeypatch.setattr(api._search, "list_domains", lambda conn: ["kartu", "pinjaman"])
 
     with TestClient(api.create_app()) as c:
         yield c, captured
 
 
-def test_search_contract_and_no_score_leak(client):
+def test_search_contract_exposes_scores(client):
     c, cap = client
     resp = c.get("/api/search", params={"q": "kartu", "domain": "kartu", "limit": 5})
     assert resp.status_code == 200
     body = resp.json()
-    assert body["results"][0]["headline"] == "Kartu Kredit"
-    assert "score" not in body["results"][0]
+    top = body["results"][0]
+    assert top["headline"] == "Kartu Kredit"
+    assert top["relevance"] == 0.82 and top["score"] == 0.0312
     assert cap["limit"] == 5 and cap["domain"] == "kartu"
 
 
@@ -66,13 +76,38 @@ def test_query_too_long_rejected(client):
     assert c.get("/api/search", params={"q": "a" * (api.MAX_QUERY_CHARS + 1)}).status_code == 400
 
 
-def test_columns_and_domains_routes(client):
+def test_table_columns_lookup_and_domains_routes(client):
     c, _ = client
-    cols = c.get("/api/search/columns", params={"table": "datalake.x"}).json()
+    cols = c.get("/api/search/table/columns", params={"table": "datalake.x"}).json()
     assert cols["columns"][0]["pii"] is True
     assert "kartu" in c.get("/api/search/domains").json()["domains"]
 
 
-def test_columns_rejects_empty_table(client):
+def test_table_columns_lookup_rejects_empty_table(client):
     c, _ = client
-    assert c.get("/api/search/columns", params={"table": ""}).status_code == 400
+    assert c.get("/api/search/table/columns", params={"table": ""}).status_code == 400
+
+
+def test_column_search_contract_and_filters(client):
+    c, cap = client
+    resp = c.get("/api/search/columns",
+                 params={"q": "nomor kartu", "table": "datalake.tx", "domain": "kartu", "limit": 5})
+    assert resp.status_code == 200
+    body = resp.json()
+    top = body["results"][0]
+    assert top["field_name"] == "card_no"
+    assert top["relevance"] == 0.77 and top["score"] == 0.0290
+    assert cap["cq"] == "nomor kartu" and cap["ctable"] == "datalake.tx"
+    assert cap["cdomain"] == "kartu" and cap["climit"] == 5
+
+
+def test_column_search_limit_clamped(client):
+    c, cap = client
+    c.get("/api/search/columns", params={"q": "x", "limit": 999})
+    assert cap["climit"] == 50
+
+
+def test_column_search_query_too_long_rejected(client):
+    c, _ = client
+    assert c.get("/api/search/columns",
+                 params={"q": "a" * (api.MAX_QUERY_CHARS + 1)}).status_code == 400

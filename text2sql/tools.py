@@ -20,7 +20,7 @@ from strands import tool
 
 from text2sql.audit_log import get_logger
 from text2sql.prompt_loader import load_prompt
-from text2sql.retrieval import hybrid_search, top_dense_cosine
+from text2sql.retrieval import hybrid_search, hybrid_search_era_corpus, top_dense_cosine
 
 _log = get_logger("tools")
 
@@ -101,7 +101,7 @@ class RetrievalContext:
         })
 
     def era_top_cosine(self) -> float:
-        vals = [c["top_cosine"] for c in self.calls if c["kb"] == "era_knowledge"]
+        vals = [c["top_cosine"] for c in self.calls if c["kb"] == "era_corpus"]
         return max(vals) if vals else 0.0
 
     def schema_top_cosine(self) -> float:
@@ -119,9 +119,9 @@ def _fetch_era_payloads(conn, ids: list[str]) -> dict[str, dict]:
         return {}
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT id, query_type, query_engine, tables, key_filters, report_codes, "
-            "analyst_notes, sql_query, intent_text "
-            "FROM era_knowledge WHERE id = ANY(%s)", (ids,))
+            "SELECT id, solution_source, query_engine, tables, key_filters, report_codes, "
+            "analyst_notes, solution, canonical_need, has_solution, domain_tags "
+            "FROM era_corpus WHERE id = ANY(%s)", (ids,))
         cols = [c.name for c in cur.description]
         return {r[0]: dict(zip(cols, r)) for r in cur.fetchall()}
 
@@ -170,14 +170,14 @@ def _render_table_ddl(conn, table_name: str, description: str | None = None,
 def era_knowledge_text(ctx: RetrievalContext, question: str, limit: int = 5) -> str:
     _log.info("search_era_knowledge | question=%r  limit=%d", question[:100], limit)
 
-    rows = hybrid_search("era_knowledge", question, limit=limit, conn=ctx.conn)
-    ctx.record("era_knowledge", question, rows)
+    rows = hybrid_search_era_corpus(question, limit=limit, conn=ctx.conn)
+    ctx.record("era_corpus", question, rows)
     payloads = _fetch_era_payloads(ctx.conn, [r["id"] for r in rows])
 
     if not rows:
         _log.warning(
             "search_era_knowledge | NO RESULTS — era_top_cosine=0.0"
-            " → coverage gate will DECLINE (floor=0.45)"
+            " → precedent is advisory; agent proceeds schema-first"
         )
         return "No matching ERA precedents found."
 
@@ -189,11 +189,12 @@ def era_knowledge_text(ctx: RetrievalContext, question: str, limit: int = 5) -> 
         all_tables.extend(p.get("tables") or [])
         tables = ", ".join(p.get("tables") or []) or "—"
         kfs = ", ".join(p.get("key_filters") or []) or "—"
-        header = (f"### Precedent {r['id']}  (type: {p.get('query_type','?')}, "
-                  f"engine: {p.get('query_engine','?')})\n"
+        solved = "yes" if p.get("has_solution") else "no (partial/notes only)"
+        header = (f"### Precedent {r['id']}  (source: {p.get('solution_source','?')}, "
+                  f"engine: {p.get('query_engine') or '?'}, has_solution: {solved})\n"
                   f"Tables: {tables}\nKey filters: {kfs}")
         notes = redact_note(p.get("analyst_notes") or "")
-        sql = redact_sql(p.get("sql_query") or "")
+        sql = redact_sql(p.get("solution") or "")
         parts = [header]
         if notes.strip():
             parts.append("Analyst notes:\n" + _fence(f"{r['id']}:notes", notes))

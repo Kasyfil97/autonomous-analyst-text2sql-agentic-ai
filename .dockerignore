@@ -1,0 +1,38 @@
+# Secrets — never bake credentials into the image (pass via --env-file / -e at run time).
+.env
+.env.*
+*.pem
+
+# Frontend (separate deploy artifact) and offline KB-build scripts (not part of the API runtime).
+frontend/
+preprocessing/
+
+# Tests and their fixtures.
+tests/
+
+# VCS, tooling, and agent/editor scratch.
+.git/
+.gitignore
+.github/
+.claude/
+.context/
+.cursor/
+
+# Python caches / local virtualenvs.
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# Docs and local data artifacts.
+*.md
+docs/
+adhoc_table.xls
+approved_mage_tables.json
+
+# OS cruft.
+.DS_Store
+Thumbs.db

@@ -18,6 +18,9 @@ export interface SearchCard {
   domain_tags: string[];
   n_columns: number | null;
   pii: PiiStatus;
+  // Relevance signals — present on search results, absent on deterministic lookups (table detail).
+  relevance?: number | null; // dense cosine 0-1; null if found only via the sparse lane
+  score?: number; // fused RRF score used for ordering
 }
 
 export interface SearchResponse {
@@ -41,6 +44,29 @@ export interface TableDetail {
   columns: ColumnInfo[];
 }
 
+export interface ColumnSearchCard {
+  id: string;
+  physical_name: string;
+  table_name: string;
+  field_name: string;
+  business_title: string;
+  description: string;
+  data_type: string;
+  domain_tags: string[];
+  pii: boolean;
+  relevance: number | null; // dense cosine 0-1; null if found only via the sparse lane
+  score: number; // fused RRF score used for ordering
+}
+
+export interface ColumnSearchResponse {
+  query: string;
+  table: string | null;
+  domain: string | null;
+  results: ColumnSearchCard[];
+  filter_caused_empty: boolean;
+  closest_related?: ColumnSearchCard[];
+}
+
 export interface GroundingEntry {
   name: string;
   in_kb: boolean;
@@ -50,7 +76,7 @@ export interface GroundingEntry {
 export type GroundingStrength = "precedent_strong" | "schema_only" | null;
 
 export interface AgentResponse {
-  kind: string;
+  kind: "sql";
   sql: string | null;
   explanation: string | null;
   assumptions: string[];
@@ -66,6 +92,25 @@ export interface AgentResponse {
   era_top_cosine: number | null;
   schema_top_cosine: number | null;
 }
+
+// A decomposed multi-part answer: one sub-draft per sub-need + a reconciliation.
+export interface SubDraft {
+  sub_need: string;
+  result: AgentResponse;
+}
+
+export interface MultiDraftResponse {
+  kind: "sql_multi";
+  question: string;
+  sub_drafts: SubDraft[];
+  reconciliation: string | null;
+  combined_sql: string | null;
+  warnings: string[];
+  declined: boolean;
+}
+
+// Either shape the agent endpoint can return; discriminated on `kind`.
+export type AgentReply = AgentResponse | MultiDraftResponse;
 
 export class ApiError extends Error {
   code: string;
@@ -109,9 +154,23 @@ export async function searchTables(
   return handle(await fetch(`${BASE}/api/search?${params}`, { headers: headers() }));
 }
 
+// Semantic search over columns (parallel to searchTables), with an optional table-name facet.
+export async function searchColumns(
+  q: string,
+  table?: string | null,
+  domain?: string | null,
+  limit = 12,
+): Promise<ColumnSearchResponse> {
+  const params = new URLSearchParams({ q, limit: String(limit) });
+  if (table) params.set("table", table);
+  if (domain) params.set("domain", domain);
+  return handle(await fetch(`${BASE}/api/search/columns?${params}`, { headers: headers() }));
+}
+
+// Deterministic lookup: the column dictionary of one table (no ranking).
 export async function tableColumns(table: string): Promise<{ table: string; columns: ColumnInfo[] }> {
   const params = new URLSearchParams({ table });
-  return handle(await fetch(`${BASE}/api/search/columns?${params}`, { headers: headers() }));
+  return handle(await fetch(`${BASE}/api/search/table/columns?${params}`, { headers: headers() }));
 }
 
 export async function tableDetail(id: string): Promise<TableDetail> {
@@ -132,7 +191,7 @@ export async function agentChat(
   question: string,
   attached_tables: string[] = [],
   history: ChatMessage[] = [],
-): Promise<AgentResponse> {
+): Promise<AgentReply> {
   return handle(
     await fetch(`${BASE}/api/agent/chat`, {
       method: "POST",

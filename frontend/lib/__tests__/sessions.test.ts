@@ -48,7 +48,7 @@ function makeSearchResponse(): SearchResponse {
 
 function makeAgentResponse(): AgentResponse {
   return {
-    kind: "draft",
+    kind: "sql",
     sql: "-- UNVERIFIED DRAFT\nSELECT * FROM dw.credit_card_txn",
     explanation: "Sensitive interpretation prose.",
     assumptions: ["Assumed 2025 only"],
@@ -144,6 +144,7 @@ describe("R19 field-level redaction", () => {
 
   it("strips AgentResponse free-text but keeps SQL + table identifiers", () => {
     const red = redactAgentResponse(makeAgentResponse());
+    if (red.kind !== "sql") throw new Error("expected a single-draft result");
     expect(red.explanation).toBeNull();
     expect(red.assumptions).toEqual([]);
     expect(red.warnings).toEqual([]);

@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import {
   agentChat,
+  type AgentReply,
   type AgentResponse,
   type ChatMessage,
   type GroundingEntry,
   type GroundingStrength,
+  type MultiDraftResponse,
 } from "@/lib/api";
 import { ATTACH_DND_TYPE, MAX_ATTACHED } from "@/lib/attach";
 import { SqlBlock } from "@/components/SqlBlock";
@@ -244,8 +246,74 @@ function AgentResultCard({ result }: { result: AgentResponse }) {
   );
 }
 
-/** Flatten an assistant response into plain text the model can read back as prior context. */
-function assistantContext(r: AgentResponse): string {
+/** A decomposed multi-part answer: a sub-draft card per sub-need + the reconciliation. */
+function MultiDraftCard({ result }: { result: MultiDraftResponse }) {
+  return (
+    <div className="grid gap-4">
+      <div className="rounded-xl border border-[color:var(--color-line)] bg-[color:var(--color-panel-2)]/60 px-5 py-3">
+        <span className="text-[11px] font-bold uppercase tracking-widest text-[color:var(--color-muted)]">
+          Permintaan multi-bagian — {result.sub_drafts.length} sub-draft
+        </span>
+      </div>
+
+      {result.sub_drafts.map((sd, i) => (
+        <div key={i} className="grid gap-2">
+          <div className="flex items-center gap-2 px-1">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[color:var(--color-accent)]/12 text-[10px] font-bold tabular-nums text-[color:var(--color-accent)]">
+              {i + 1}
+            </span>
+            <span className="text-sm font-medium text-[color:var(--color-ink)]">{sd.sub_need}</span>
+          </div>
+          <AgentResultCard result={sd.result} />
+        </div>
+      ))}
+
+      {(result.reconciliation || result.combined_sql || result.warnings.length > 0) && (
+        <div className="overflow-hidden rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-panel)] shadow-sm">
+          <div className="border-b border-[color:var(--color-line)] bg-[color:var(--color-panel-2)]/70 px-5 py-3">
+            <span className="text-[11px] font-bold uppercase tracking-widest text-[color:var(--color-muted)]">
+              Penggabungan
+            </span>
+          </div>
+          <div className="divide-y divide-[color:var(--color-line)]">
+            {result.reconciliation && (
+              <div className="px-5 py-4">
+                <SectionHeader icon="🔗" label="Cara menggabung" />
+                <ExplanationPoints text={result.reconciliation} />
+              </div>
+            )}
+            {result.warnings.length > 0 && (
+              <div className="px-5 py-4">
+                <SectionHeader icon="⚠" label="Peringatan lintas-draft" />
+                <div className="grid gap-1.5">
+                  {result.warnings.map((w, i) => (
+                    <WarningItem key={i} text={w} />
+                  ))}
+                </div>
+              </div>
+            )}
+            {result.combined_sql && (
+              <div className="px-5 py-4">
+                <SectionHeader icon="📝" label="Draft SQL gabungan (saran — verifikasi)" />
+                <SqlBlock sql={result.combined_sql} />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Flatten an assistant response (single or multi-draft) into plain text for prior context. */
+function assistantContext(r: AgentReply): string {
+  if (r.kind === "sql_multi") {
+    const parts = r.sub_drafts.map(
+      (sd, i) => `[${i + 1}] ${sd.sub_need}\n${assistantContext(sd.result)}`,
+    );
+    if (r.reconciliation) parts.push("Reconciliation: " + r.reconciliation);
+    return parts.join("\n\n") || "(no answer)";
+  }
   const parts: string[] = [];
   if (r.declined && r.missing) parts.push(r.missing);
   if (r.explanation) parts.push(r.explanation);
@@ -259,6 +327,14 @@ function assistantContext(r: AgentResponse): string {
     if (sql) parts.push("SQL:\n" + sql);
   }
   return parts.join("\n\n") || "(no answer)";
+}
+
+/** Grounded tables to carry into the next turn — union across sub-drafts for a multi answer. */
+function carryTables(r: AgentReply): string[] {
+  if (r.kind === "sql_multi") {
+    return Array.from(new Set(r.sub_drafts.flatMap((sd) => sd.result.tables_used)));
+  }
+  return r.tables_used;
 }
 
 function UserBubble({ turn }: { turn: ChatTurn }) {
@@ -353,7 +429,7 @@ export function AgentPane() {
     // Carry the last answer's grounded tables so a follow-up stays grounded without re-searching.
     const lastAnswer = [...turns].reverse().find((t) => t.role === "assistant" && t.response)
       ?.response;
-    const carry = lastAnswer?.tables_used ?? [];
+    const carry = lastAnswer ? carryTables(lastAnswer) : [];
     const sendAttached = Array.from(new Set([...attached, ...carry]));
 
     setAgent((s) => ({
@@ -510,7 +586,11 @@ export function AgentPane() {
               <p className="mt-1">{t.error}</p>
             </div>
           ) : t.response ? (
-            <AgentResultCard key={t.id} result={t.response} />
+            t.response.kind === "sql_multi" ? (
+              <MultiDraftCard key={t.id} result={t.response} />
+            ) : (
+              <AgentResultCard key={t.id} result={t.response} />
+            )
           ) : null,
         )}
 

@@ -412,11 +412,19 @@ def decide(sql, dialect, *, era_top_cosine, schema_top_cosine, known_tables,
     )
     warnings: list[str] = []
 
-    # Gate 1: coverage (numeric threshold — low severity; precedent already advisory)
+    # Gate 1: coverage (numeric threshold — low severity; precedent already advisory).
+    # Case C escalation: weak schema AND no confident precedent means the draft rests on
+    # uncertain table/column names — surface a firmer, non-blocking clarification cue.
     cov_ok, cov_detail = coverage_ok(era_top_cosine, schema_top_cosine,
                                      era_floor=era_floor, schema_floor=schema_floor)
     if not cov_ok:
-        warnings.append(f"[LOW] coverage: {cov_detail}")
+        if era_top_cosine < era_floor:
+            warnings.append(
+                f"[HIGH] needs clarification: {cov_detail} and no confident precedent "
+                f"(era cosine {era_top_cosine:.3f} < {era_floor}) — verify the tables/columns "
+                "or refine the request before relying on this draft")
+        else:
+            warnings.append(f"[LOW] coverage: {cov_detail}")
 
     # Gate 2: SQL safety. On failure, recover identifiers best-effort so the policy and
     # grounding gates can still inspect the draft.

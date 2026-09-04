@@ -61,6 +61,28 @@ class Text2SQLResult(BaseModel):
         return cls(declined=True, missing=reason)
 
 
+class SubDraft(BaseModel):
+    """One decomposed sub-need and its independently-gated draft."""
+    sub_need: str
+    result: Text2SQLResult
+
+
+class MultiDraftResult(BaseModel):
+    """A decomposed multi-part request: one gated sub-draft per sub-need + reconciliation.
+
+    Additive to the single-draft path — only produced when decomposition yields >1
+    sub-need (see ``orchestrator.handle``). ``declined`` stays False so CLI/loop code that
+    checks ``result.declined`` treats it like any released answer.
+    """
+    kind: str = "sql_multi"
+    question: str
+    sub_drafts: list[SubDraft] = Field(default_factory=list)
+    reconciliation: str | None = None
+    combined_sql: str | None = None
+    warnings: list[str] = Field(default_factory=list)
+    declined: bool = False
+
+
 def get_session():
     """Lazily build a single federated BedrockSession (OIDC is expensive)."""
     global _session
@@ -168,7 +190,7 @@ def precedent_dialect(ctx: RetrievalContext, conn) -> str | None:
     Picks the ERA call with the max top_cosine across the loop (not call order), so a
     refining second search can't drag the dialect off the best precedent.
     """
-    era_calls = [c for c in ctx.calls if c["kb"] == "era_knowledge" and c["ids"]]
+    era_calls = [c for c in ctx.calls if c["kb"] == "era_corpus" and c["ids"]]
     if not era_calls:
         _log.warning(
             "precedent_dialect | no ERA calls with results — dialect will be None"
@@ -178,7 +200,7 @@ def precedent_dialect(ctx: RetrievalContext, conn) -> str | None:
     best = max(era_calls, key=lambda c: c.get("top_cosine", 0.0))
     top_id = best["ids"][0]
     with conn.cursor() as cur:
-        cur.execute("SELECT query_engine FROM era_knowledge WHERE id = %s", (top_id,))
+        cur.execute("SELECT query_engine FROM era_corpus WHERE id = %s", (top_id,))
         row = cur.fetchone()
     dialect = row[0] if row else None
     _log.info(

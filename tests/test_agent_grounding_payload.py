@@ -22,7 +22,7 @@ def _ctx(retrieved=(), era=0.0, schema=0.0) -> RetrievalContext:
     ctx.retrieved_tables = set(retrieved)
     ctx.calls = []
     if era:
-        ctx.calls.append({"kb": "era_knowledge", "query": "q", "top_cosine": era,
+        ctx.calls.append({"kb": "era_corpus", "query": "q", "top_cosine": era,
                           "top_rrf": 0.0, "ids": []})  # ids=[] → precedent_dialect skips DB
     if schema:
         ctx.calls.append({"kb": "schema_tables", "query": "q", "top_cosine": schema,

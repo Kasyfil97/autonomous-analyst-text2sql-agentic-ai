@@ -12,7 +12,7 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
-import type { AgentResponse, SearchResponse } from "@/lib/api";
+import type { AgentReply, SearchResponse } from "@/lib/api";
 import { addAttached, type AttachResult } from "@/lib/attach";
 import {
   STORAGE_KEY,
@@ -41,7 +41,7 @@ export interface ChatTurn {
   role: "user" | "assistant";
   content?: string; // user message text
   attached?: string[]; // tables attached on a user turn
-  response?: AgentResponse; // assistant structured result
+  response?: AgentReply; // assistant structured result (single or multi-draft)
   error?: string; // assistant turn that failed to load
 }
 

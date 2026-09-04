@@ -61,11 +61,10 @@ def _frontend_origin() -> str:
 # --------------------------------------------------------------------------
 
 def build_pool():
-    """Read-only connection pool. Raises (via pg_config) if PG_RO_USER is unset —
-    surfaced as a clear startup failure rather than a silent degrade."""
+    """Connection pool using PG_USER credentials."""
     from psycopg2.pool import ThreadedConnectionPool
 
-    return ThreadedConnectionPool(minconn=1, maxconn=8, **pg_config(readonly=True))
+    return ThreadedConnectionPool(minconn=1, maxconn=8, **pg_config())
 
 
 def build_session():
@@ -282,11 +281,18 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="query too long")
         return _search.search_tables(conn, q, domain=domain, limit=max(1, min(limit, 50)))
 
+    # Column semantic search (parallel to /api/search = table search). Ranks schema_columns
+    # by relevance to q, with an optional table-name / domain facet.
     @app.get("/api/search/columns", dependencies=[Depends(require_auth)])
-    async def search_columns(table: str, conn=Depends(get_conn)):
-        if not table or len(table) > 256:
+    async def search_columns(q: str = "", table: str | None = None,
+                             domain: str | None = None, limit: int = 10,
+                             conn=Depends(get_conn)):
+        if len(q) > MAX_QUERY_CHARS:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="query too long")
+        if table is not None and len(table) > 256:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid table")
-        return {"table": table, "columns": _search.table_columns(conn, table)}
+        return _search.search_columns_semantic(
+            conn, q, table=table, domain=domain, limit=max(1, min(limit, 50)))
 
     @app.get("/api/search/table", dependencies=[Depends(require_auth)])
     async def search_table(id: str, conn=Depends(get_conn)):
@@ -296,6 +302,14 @@ def create_app() -> FastAPI:
         if detail is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="table not found")
         return detail
+
+    # Deterministic lookup: the column dictionary OF a given table (no ranking). Companion to
+    # /api/search/table (single-table detail); distinct from /api/search/columns (the search).
+    @app.get("/api/search/table/columns", dependencies=[Depends(require_auth)])
+    async def table_columns(table: str, conn=Depends(get_conn)):
+        if not table or len(table) > 256:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid table")
+        return {"table": table, "columns": _search.table_columns(conn, table)}
 
     @app.get("/api/search/domains", dependencies=[Depends(require_auth)])
     async def search_domains(conn=Depends(get_conn)):
@@ -318,9 +332,12 @@ def create_app() -> FastAPI:
             result = _agent.Text2SQLResult.decline(_orchestrator.FALLBACK_MESSAGE)
         else:
             attached = _resolve_attached_tables(req.attached_tables, conn)
-            result = _agent.generate_sql(question, session=session, conn=conn,
-                                         attached_tables=attached, history=history)
-        return _serializers.agent_result_to_payload(result)
+            # Orchestrated: decomposes a multi-part opening turn into per-sub-need drafts
+            # (rec #1-3); a single-part request / follow-up returns a plain Text2SQLResult.
+            result = _orchestrator.generate_sql_orchestrated(
+                question, session=session, conn=conn,
+                attached_tables=attached, history=history)
+        return _serializers.result_to_payload(result)
 
     return app
 

@@ -10,6 +10,7 @@
 // text needed to restore a usable session. See `redactSearchResponse` / `redactAgentResponse`.
 
 import type {
+  AgentReply,
   AgentResponse,
   SearchCard,
   SearchResponse,
@@ -106,7 +107,19 @@ export function redactSearchResponse(res: SearchResponse): SearchResponse {
   };
 }
 
-export function redactAgentResponse(res: AgentResponse): AgentResponse {
+export function redactAgentResponse(res: AgentReply): AgentReply {
+  // Multi-draft: strip the reconciliation prose + cross-draft warnings, redact each sub-draft.
+  if (res.kind === "sql_multi") {
+    return {
+      ...res,
+      reconciliation: null,
+      warnings: [],
+      sub_drafts: res.sub_drafts.map((sd) => ({
+        sub_need: sd.sub_need,
+        result: redactAgentResponse(sd.result) as AgentResponse,
+      })),
+    };
+  }
   return {
     ...res,
     explanation: null,

@@ -1,5 +1,12 @@
 # Text-to-SQL Retrieval — Reference
 
+> **ERA KB superseded:** the live agent now retrieves ERA precedents from **`era_corpus`
+> (V2)** via a 3-lane hybrid (dense + sparse + synthetic-question vectors), not the
+> `era_knowledge` table described below. See **[`RETRIEVAL_V2.md`](RETRIEVAL_V2.md)** for
+> the current ERA KB and the analyst flow. This document remains the reference for the
+> **schema KB** (`schema_tables` / `schema_columns`, unchanged) and the shared hybrid
+> recipe; the `era_knowledge` sections are V1 history.
+
 How the Text-to-SQL agent retrieves grounding knowledge to write new SQL. Read this
 first when working on retrieval/knowledge in this repo. Two complementary knowledge
 bases, both hybrid (dense + sparse) in Postgres:
