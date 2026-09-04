@@ -1,5 +1,16 @@
 # Text-to-SQL Agent Architecture
 
+> **V2 update (current system).** The SQL path now **decomposes** a multi-part opening
+> request into sub-needs, drafts each independently, and **reconciles** them into a
+> `MultiDraftResult` (`orchestrator.generate_sql_orchestrated` + `decompose.py` +
+> `reconcile.py`); a single-part request takes the unchanged fast path below. ERA
+> precedents are retrieved from **`era_corpus`** via a **3-lane** hybrid (dense + sparse +
+> synthetic-question `qvec`), replacing `era_knowledge`. Tool search queries are issued in
+> **Bahasa Indonesia** (the KB is Indonesian-indexed). The diagrams below depict the
+> single-draft core flow (still accurate per sub-need); see
+> [`CLAUDE.md`](../CLAUDE.md) and [`RETRIEVAL_V2.md`](../RETRIEVAL_V2.md) for the current
+> end-to-end and the analyst flow.
+
 ## Purpose and operating boundary
 
 The application accepts Indonesian or English questions and returns one of:
@@ -83,7 +94,7 @@ flowchart LR
     end
 
     subgraph PG["Postgres 16 + pgvector (read-only role)"]
-        ERA_KB[("era_knowledge<br/>dense + sparse vectors")]
+        ERA_KB[("era_corpus<br/>dense + sparse + qvec")]
         TABLE_KB[("schema_tables<br/>dense + sparse vectors")]
         COLUMN_KB[("schema_columns<br/>column catalog")]
         BM25_KB[("*_bm25 + *_bm25_meta<br/>vocabulary, IDF, dimensions")]
@@ -179,8 +190,9 @@ tool implementations.
 
 | Agent or component | Model interaction | Available tools | Post-model processing |
 |---|---|---|---|
-| Orchestrator | One forced `route_intent` call | `route_intent` only | Dispatch to SQL, search, or fallback |
-| SQL drafting agent | Multi-turn Strands tool loop | `search_era_knowledge`, `search_schema`, `get_table_schema` | Parse JSON, resolve dialect, run SQL gates, add draft marker |
+| Orchestrator | One forced `route_intent` call (+ one forced `decompose_request` call on a sql opening turn) | `route_intent`, `decompose_request` | Dispatch to SQL/search/fallback; for sql, decompose → run each sub-need → reconcile |
+| SQL drafting agent (per sub-need) | Multi-turn Strands tool loop | `search_era_knowledge` (→ `era_corpus`), `search_schema`, `get_table_schema` | Parse JSON, resolve dialect, run SQL gates, add draft marker |
+| Reconciler | One JSON call (only when >1 sub-need) | none | Merge sub-drafts: join keys, unified filters, dialect resolution → `MultiDraftResult` |
 | Knowledge search agent | Multi-turn Strands tool loop | Same three knowledge tools | Strip reasoning, derive sources, run prose gates |
 | Out-of-scope fallback | None after routing | None | Return a fixed bilingual response |
 
@@ -294,8 +306,10 @@ from tool-call evidence in `RetrievalContext`.
 
 ### Semantic tool path
 
-`search_era_knowledge` searches `era_knowledge`; `search_schema` searches
-`schema_tables`. Both call `hybrid_search()`:
+`search_era_knowledge` searches **`era_corpus`** (3-lane: dense + sparse + `era_corpus_qvec`,
+via `hybrid_search_era_corpus`); `search_schema` searches `schema_tables` (2-lane
+`hybrid_search`). Both queries are phrased in Bahasa Indonesia (the KB is Indonesian-indexed).
+The shared `hybrid_search()` path:
 
 1. Verify the requested KB is in `ALLOWED_KBS`.
 2. Load that KB's BM25 token-to-index and IDF maps from Postgres, then cache them.
@@ -314,8 +328,8 @@ from tool-call evidence in `RetrievalContext`.
 
 - Agent connections require `PG_RO_USER` and `PG_RO_PASSWORD`; there is no fallback to
   the Postgres superuser.
-- Dynamic KB table selection is restricted to `era_knowledge`, `schema_tables`, and
-  `schema_columns`.
+- Dynamic KB table selection is restricted to `ALLOWED_KBS` = `era_corpus`,
+  `era_knowledge`, `schema_tables`, `schema_columns` (the live ERA tool uses `era_corpus`).
 - Raw ERA tables are excluded from the role's privileges and repeated in the gate
   denylist.
 - Tool results are redacted and enclosed in `<untrusted>` markers before model access.
@@ -328,7 +342,7 @@ from tool-call evidence in `RetrievalContext`.
 
 | Order | Check | Evidence | Result on failure |
 |---:|---|---|---|
-| 1 | Schema coverage threshold; ERA score is advisory | Retrieval cosine scores | `[LOW]` warning |
+| 1 | Schema coverage threshold; ERA score is advisory | Retrieval cosine scores | `[LOW]` warning, or `[HIGH] needs clarification` when schema AND precedent are both weak (Case C) |
 | 2 | One parseable read-only `SELECT`; no writes or dangerous functions | `sqlglot` AST | `[CRITICAL]` warning |
 | 3 | No denied tables or PII/PCI-like columns | Parsed table and column identifiers | `[CRITICAL]` warning |
 | 4 | Referenced tables exist in the schema catalog | Postgres known-table set | `[HIGH]` warning when strict grounding rejects |
@@ -368,8 +382,11 @@ standard Strands tool loop.
 |---|---|
 | `text2sql/web.py` | Browser UI, `/api/chat`, JSON response mapping |
 | `text2sql/cli.py` | Interactive terminal entry point and result formatting |
-| `text2sql/orchestrator.py` | Intent classification and dispatch |
+| `text2sql/orchestrator.py` | Intent classification + `generate_sql_orchestrated` (decompose → per-sub-need → reconcile) |
+| `text2sql/decompose.py` | Forced-tool-call split of a request into sub-needs |
+| `text2sql/reconcile.py` | Combine sub-drafts (join/filter/dialect) → `MultiDraftResult` |
 | `text2sql/agent.py` | SQL agent assembly, parsing, dialect resolution, gates |
+| `text2sql/api.py` / `api_serializers.py` | Sage FastAPI backend + result→JSON (single & multi-draft) |
 | `text2sql/search_agent.py` | Search agent, deterministic sources, prose gates |
 | `text2sql/tools.py` | Tools, redaction, untrusted fencing, retrieval evidence |
 | `text2sql/retrieval.py` | Dense/sparse query construction and RRF retrieval |

@@ -162,6 +162,17 @@ def test_decide_warns_on_weak_schema_coverage():
     assert d.ok and any("coverage" in w for w in d.warnings)
 
 
+def test_decide_case_c_firmer_clarification_when_both_weak():
+    # weak schema AND no confident precedent -> firmer, non-blocking clarification cue
+    d = G.decide("SELECT branch FROM trx_teller", "spark",
+                 era_top_cosine=0.1, schema_top_cosine=0.2,
+                 known_tables={"trx_teller"})
+    assert d.ok
+    assert any("needs clarification" in w and "[HIGH]" in w for w in d.warnings)
+    # not the soft [LOW] coverage line in this case
+    assert not any(w.startswith("[LOW] coverage") for w in d.warnings)
+
+
 def test_decide_warns_unsafe_sql_and_recovers_identifiers():
     # unsafe SQL becomes a CRITICAL warning; identifiers are still extracted best-effort
     d = G.decide("DROP TABLE t", "spark",

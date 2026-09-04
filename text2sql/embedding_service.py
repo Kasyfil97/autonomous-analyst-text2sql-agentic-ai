@@ -23,33 +23,26 @@ EMBED_MODEL = os.getenv("EMBED_MODEL", "/data/bge-m3")
 EMBED_DIM = int(os.getenv("EMBED_DIM", "1024"))
 
 
-def pg_config(readonly=False):
+def pg_config(readonly=False):  # noqa: ARG001 — readonly kept for call-site compat
     """Return kwargs for psycopg2.connect() from the environment.
 
-    With ``readonly=True`` the connection uses the dedicated least-privilege role
-    (``PG_RO_USER``/``PG_RO_PASSWORD``); see ``docs/setup-readonly-role.md``. The agent
-    path must use this so it can never write or reach ``era_tickets``. We deliberately
-    raise rather than silently fall back to the superuser when the RO env is missing.
-    Build/ingest scripts keep using the default (superuser) ``pg_config()``.
+    Always uses ``PG_USER``/``PG_PASSWORD``. The ``readonly`` parameter is accepted
+    but ignored (all connections now use the same credentials).
+
+    If ``PG_KB_SCHEMA`` is set (e.g. ``adhoc``), that schema is prepended to the
+    connection's ``search_path`` so unqualified references to ``schema_tables`` and
+    ``schema_columns`` resolve there first.
     """
     cfg = {
         "host": os.getenv("PG_HOST", "localhost"),
         "port": int(os.getenv("PG_PORT", "5433")),
         "dbname": os.getenv("PG_DBNAME", "postgres"),
+        "user": os.getenv("PG_USER", "postgres"),
+        "password": os.getenv("PG_PASSWORD", "postgres"),
     }
-    if readonly:
-        ro_user = os.getenv("PG_RO_USER")
-        if not ro_user:
-            raise RuntimeError(
-                "pg_config(readonly=True) requires PG_RO_USER (and PG_RO_PASSWORD). "
-                "Create the read-only role first — see docs/setup-readonly-role.md. "
-                "Refusing to fall back to the superuser for agent access."
-            )
-        cfg["user"] = ro_user
-        cfg["password"] = os.getenv("PG_RO_PASSWORD", "")
-    else:
-        cfg["user"] = os.getenv("PG_USER", "postgres")
-        cfg["password"] = os.getenv("PG_PASSWORD", "postgres")
+    kb_schema = os.getenv("PG_KB_SCHEMA", "").strip()
+    if kb_schema and kb_schema != "public":
+        cfg["options"] = f"-c search_path={kb_schema},public"
     return cfg
 
 

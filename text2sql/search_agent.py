@@ -60,7 +60,7 @@ def _derive_sources(ctx: RetrievalContext) -> dict:
     """Sources from what was retrieved this request — not from the model's claims."""
     era_ids: list[str] = []
     for c in ctx.calls:
-        if c["kb"] == "era_knowledge":
+        if c["kb"] == "era_corpus":
             era_ids.extend(c["ids"])
     sources: dict = {}
     if era_ids:

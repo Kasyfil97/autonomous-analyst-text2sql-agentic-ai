@@ -1,0 +1,11 @@
+{
+  "comment": "design-sync bundle path map: shim Next.js imports and resolve the app's @/ alias so the components bundle standalone.",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "next/link": ["./.ds-shims/next-link.tsx"],
+      "next/navigation": ["./.ds-shims/next-navigation.ts"],
+      "@/*": ["./*"]
+    }
+  }
+}
